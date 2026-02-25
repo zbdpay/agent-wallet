@@ -103,19 +103,33 @@ export function registerCommandGroups(program: Command): void {
       });
 
       if (options?.static) {
-        const result = await createStaticCharge(apiKey);
+        const fixedAmountSats =
+          typeof amountSats === "string" && amountSats.trim().length > 0
+            ? parseAmountSats(amountSats)
+            : undefined;
+        const result = await createStaticCharge(apiKey, {
+          amountSats: fixedAmountSats,
+          description,
+        });
         await appendPayment({
           id: result.charge_id,
           type: "receive",
-          amount_sats: 0,
+          amount_sats: fixedAmountSats ?? 0,
           status: result.status,
           timestamp: result.timestamp,
         });
 
-        writeJson({
+        const output: Record<string, unknown> = {
           charge_id: result.charge_id,
-          lightning_address: result.lightning_address,
-        });
+        };
+        if (result.lightning_address) {
+          output.lightning_address = result.lightning_address;
+        }
+        if (result.lnurl) {
+          output.lnurl = result.lnurl;
+        }
+
+        writeJson(output);
         return;
       }
 
@@ -214,7 +228,39 @@ export function registerCommandGroups(program: Command): void {
       writeJson(detail);
     });
 
-  const withdraw = program.command("withdraw").description("Manage LNURL-withdraw flows");
+  const withdraw = program
+    .command("withdraw")
+    .description("Manage LNURL-withdraw flows")
+    .argument("[amount_or_id]", "Amount in sats (create) or withdraw id (status)")
+    .action(async (amountOrId?: string) => {
+      if (typeof amountOrId !== "string" || amountOrId.trim().length === 0) {
+        throw new CliError(
+          "invalid_withdraw_usage",
+          "Use `zbdw withdraw <amount_sats>`, `zbdw withdraw <withdraw_id>`, `zbdw withdraw create <amount_sats>`, or `zbdw withdraw status <withdraw_id>`",
+        );
+      }
+
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const normalized = amountOrId.trim();
+      if (/^\d+$/.test(normalized)) {
+        const amount = parseAmountSats(normalized);
+        const result = await createWithdrawRequest(apiKey, amount);
+        writeJson({
+          withdraw_id: result.withdraw_id,
+          lnurl: result.lnurl,
+        });
+        return;
+      }
+
+      const result = await fetchWithdrawStatus(apiKey, normalized);
+      writeJson(result);
+    });
 
   withdraw
     .command("create")

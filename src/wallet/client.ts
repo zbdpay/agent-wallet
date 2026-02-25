@@ -21,7 +21,8 @@ export interface ReceiveInvoiceResult {
 
 export interface StaticChargeResult {
   charge_id: string;
-  lightning_address: string;
+  lightning_address: string | null;
+  lnurl: string | null;
   status: string;
   timestamp: string;
 }
@@ -220,10 +221,21 @@ export async function createReceiveInvoice(
   };
 }
 
-export async function createStaticCharge(apiKey: string): Promise<StaticChargeResult> {
+export async function createStaticCharge(
+  apiKey: string,
+  options?: { amountSats?: number; description?: string },
+): Promise<StaticChargeResult> {
+  const fixedAmountMsats =
+    typeof options?.amountSats === "number" ? String(options.amountSats * 1000) : null;
+  const bodyPayload = {
+    minAmount: fixedAmountMsats ?? "1000",
+    maxAmount: fixedAmountMsats ?? "500000000",
+    description: options?.description?.trim() || "Payment request",
+  };
+
   const body = await requestZbd(apiKey, "/v0/static-charges", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(bodyPayload),
   });
 
   const chargeId = pickString(body, ["id"], ["charge_id"], ["data", "id"], ["data", "charge_id"]);
@@ -231,17 +243,27 @@ export async function createStaticCharge(apiKey: string): Promise<StaticChargeRe
     body,
     ["lightning_address"],
     ["lightningAddress"],
+    ["identifier"],
     ["data", "lightning_address"],
     ["data", "lightningAddress"],
+    ["data", "identifier"],
+  );
+  const lnurl = pickString(
+    body,
+    ["lnurl"],
+    ["invoice", "request"],
+    ["data", "lnurl"],
+    ["data", "invoice", "request"],
   );
 
-  if (!chargeId || !lightningAddress) {
+  if (!chargeId || (!lightningAddress && !lnurl)) {
     throw new CliError("receive_failed", "Static charge response missing required fields");
   }
 
   return {
     charge_id: chargeId,
-    lightning_address: lightningAddress,
+    lightning_address: lightningAddress ?? null,
+    lnurl: lnurl ?? null,
     status: pickStatus(body, "active"),
     timestamp: pickTimestamp(body),
   };
@@ -343,13 +365,41 @@ export async function fetchPaymentDetail(apiKey: string, id: string): Promise<Pa
 }
 
 export async function createWithdrawRequest(apiKey: string, amountSats: number): Promise<WithdrawCreateResult> {
+  const amountMsats = String(amountSats * 1000);
   const body = await requestZbd(apiKey, "/v0/withdrawal-requests", {
     method: "POST",
-    body: JSON.stringify({ amount: amountSats }),
+    body: JSON.stringify({ amount: amountMsats, description: "Withdrawal request" }),
   });
 
-  const withdrawId = pickString(body, ["id"], ["withdraw_id"], ["withdrawId"], ["data", "id"], ["data", "withdraw_id"]);
-  const lnurl = pickString(body, ["lnurl"], ["data", "lnurl"]);
+  const withdrawId = pickString(
+    body,
+    ["id"],
+    ["withdraw_id"],
+    ["withdrawId"],
+    ["withdrawalRequestId"],
+    ["data", "id"],
+    ["data", "withdraw_id"],
+    ["data", "withdrawId"],
+    ["data", "withdrawalRequestId"],
+  );
+  const lnurlRaw = pickString(
+    body,
+    ["lnurl"],
+    ["invoice", "request"],
+    ["invoice", "uri"],
+    ["invoice", "fastRequest"],
+    ["invoice", "fastUri"],
+    ["fastRequest"],
+    ["fastUri"],
+    ["data", "lnurl"],
+    ["data", "invoice", "request"],
+    ["data", "invoice", "uri"],
+    ["data", "invoice", "fastRequest"],
+    ["data", "invoice", "fastUri"],
+    ["data", "fastRequest"],
+    ["data", "fastUri"],
+  );
+  const lnurl = lnurlRaw ? normalizeLightningUri(lnurlRaw) : null;
 
   if (!withdrawId || !lnurl) {
     throw new CliError("withdraw_failed", "Withdraw creation response missing required fields");
@@ -511,7 +561,28 @@ async function requestZbd(apiKey: string, path: string, init: { method: string; 
     });
   }
 
+  const success = getAtPath(body, ["success"]);
+  if (success === false) {
+    throw new CliError(
+      "wallet_request_failed",
+      pickString(body, ["message"], ["error"], ["errorString"]) ?? "ZBD API request failed",
+      {
+        status: response.status,
+        response: body,
+        path,
+      },
+    );
+  }
+
   return body;
+}
+
+function normalizeLightningUri(value: string): string {
+  if (value.toLowerCase().startsWith("lightning:")) {
+    return value.slice("lightning:".length);
+  }
+
+  return value;
 }
 
 function parseSats(

@@ -411,13 +411,22 @@ test("receive --static returns contract JSON", async () => {
 
     const server = await startMockServer(async (request, response) => {
       if (request.method === "POST" && request.url === "/v0/static-charges") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.minAmount, "1000");
+        assert.equal(payload.maxAmount, "500000000");
+        assert.equal(payload.description, "Payment request");
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
         response.end(
           JSON.stringify({
-            id: "sc_001",
-            lightning_address: "agent-xyz@zbd.ai",
-            status: "active",
+            message: "Successfully created Static Charge.",
+            data: {
+              id: "sc_001",
+              status: "active",
+              invoice: {
+                request: "lnurl1staticexample",
+              },
+            },
           }),
         );
         return;
@@ -438,8 +447,64 @@ test("receive --static returns contract JSON", async () => {
       const body = JSON.parse(result.stdout);
       assert.deepEqual(body, {
         charge_id: "sc_001",
-        lightning_address: "agent-xyz@zbd.ai",
+        lnurl: "lnurl1staticexample",
       });
+
+      const payments = JSON.parse(await readFile(paymentsPath, "utf8"));
+      assert.equal(payments.length, 1);
+      assert.equal(payments[0].amount_sats, 0);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("receive --static accepts amount and description", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/static-charges") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.minAmount, "50000");
+        assert.equal(payload.maxAmount, "50000");
+        assert.equal(payload.description, "test");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            data: {
+              id: "sc_002",
+              status: "active",
+              invoice: {
+                request: "lnurl1fixedamount",
+              },
+            },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["receive", "50", "test", "--static"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        charge_id: "sc_002",
+        lnurl: "lnurl1fixedamount",
+      });
+
+      const payments = JSON.parse(await readFile(paymentsPath, "utf8"));
+      assert.equal(payments.length, 1);
+      assert.equal(payments[0].amount_sats, 50);
     } finally {
       await server.close();
     }
@@ -662,13 +727,16 @@ test("withdraw create and status return contract-shaped JSON", async () => {
     const server = await startMockServer(async (request, response) => {
       if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.amount, 300);
+        assert.equal(payload.amount, "300000");
+        assert.equal(payload.description, "Withdrawal request");
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
         response.end(
           JSON.stringify({
             id: "wr_001",
-            lnurl: "lnurl1withdraw",
+            invoice: {
+              request: "lnurl1withdraw",
+            },
             status: "pending",
           }),
         );
@@ -721,6 +789,150 @@ test("withdraw create and status return contract-shaped JSON", async () => {
       await server.close();
     }
   });
+});
+
+test("withdraw shorthand amount maps to create", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.amount, "300000");
+        assert.equal(payload.description, "Withdrawal request");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "wr_short_001",
+            invoice: {
+              request: "lnurl1withdrawshort",
+            },
+            status: "pending",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "300"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_short_001",
+        lnurl: "lnurl1withdrawshort",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw shorthand id maps to status", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "GET" && request.url === "/v0/withdrawal-requests/wr_short_001") {
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "wr_short_001",
+            status: "completed",
+            amount: 50000000,
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "wr_short_001"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_short_001",
+        status: "completed",
+        amount_sats: 50000,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw create parses nested invoice uri and strips lightning prefix", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.amount, "50000000");
+        assert.equal(payload.description, "Withdrawal request");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            success: true,
+            data: {
+              id: "wr_nested_001",
+              status: "pending",
+              invoice: {
+                uri: "lightning:lnurl1nestedwithdraw",
+              },
+            },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "create", "50000"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_nested_001",
+        lnurl: "lnurl1nestedwithdraw",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw without args returns instructive JSON error", async () => {
+  const result = await runCli(["withdraw"]);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.error, "invalid_withdraw_usage");
+  assert.match(body.message, /withdraw <amount_sats>/);
+  assert.match(body.message, /withdraw <withdraw_id>/);
 });
 
 test("fetch reuses default token cache and avoids duplicate pay", async () => {
