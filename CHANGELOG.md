@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/zbdpay/agent-wallet/compare/1.0.1...1.0.2) (2026-02-26)
+
+### Bug Fixes
+
+* normalize wallet bin path for npm publish ([d97ebec](https://github.com/zbdpay/agent-wallet/commit/d97ebec6833cc1c2ffb9d369454629ebaaac392c))
+
 ## [1.0.1](https://github.com/zbdpay/agent-wallet/compare/1.0.0...1.0.1) (2026-02-26)
 
 ### Bug Fixes
