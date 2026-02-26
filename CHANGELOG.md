@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/zbdpay/agent-wallet/compare/1.0.0...1.0.1) (2026-02-26)
+
+### Bug Fixes
+
+* run cli when invoked from symlinked bin path ([8a2b0ce](https://github.com/zbdpay/agent-wallet/commit/8a2b0ce80dc14f9d82a315774d0e7e06a933981e))
+
 ## 1.0.0 (2026-02-26)
 
 ### Features
