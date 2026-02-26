@@ -283,7 +283,6 @@ export async function sendPayment(
   if (kind === "bolt11") {
     payload = {
       invoice: destination,
-      amount: amountSats,
     };
   } else if (kind === "ln_address" || kind === "lnurl") {
     path = "/v0/ln-address/send-payment";

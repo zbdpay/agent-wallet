@@ -598,6 +598,7 @@ test("send auto-detects destination format and routes to expected endpoints", as
       );
 
       assert.equal(seen[0].payload.invoice, "lnbc1exampleinvoice");
+      assert.equal(seen[0].payload.amount, undefined);
       assert.equal(seen[1].payload.lnAddress, "agent@example.com");
       assert.equal(seen[1].payload.amount, "11000");
       assert.equal(seen[1].payload.comment, "Sent via zbdw");
@@ -970,8 +971,8 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
       if (request.method === "POST" && request.url === "/v0/payments") {
         paymentCalls += 1;
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.amount, 21);
         assert.equal(payload.invoice, "lnbc21n1challengeinvoice");
+        assert.equal(payload.amount, undefined);
 
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
@@ -1107,6 +1108,65 @@ test("fetch exits 1 when --max-sats is below challenge amount", async () => {
       const body = JSON.parse(result.stdout);
       assert.equal(body.error, "max_sats_exceeded");
       assert.match(body.message, /exceeds limit of 10 sats/);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("fetch surfaces self-pay guard from payment API", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/payments") {
+        response.statusCode = 400;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            success: false,
+            message: "You cannot Pay your own Charge.",
+            errorCode: "WPAYS0011",
+          }),
+        );
+        return;
+      }
+
+      if (request.method === "GET" && request.url === "/self-pay") {
+        response.statusCode = 402;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            challenge: {
+              scheme: "L402",
+              macaroon: "mac_self_001",
+              invoice: "lnbc21n1selfpayinvoice",
+              paymentHash: "hash_self_001",
+              amountSats: 21,
+            },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["fetch", `${server.baseUrl}/self-pay`, "--max-sats", "21"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "wallet_request_failed");
+      assert.equal(body.details.status, 400);
+      assert.equal(body.details.path, "/v0/payments");
+      assert.equal(body.details.response.errorCode, "WPAYS0011");
+      assert.match(body.details.response.message, /Pay your own Charge/);
     } finally {
       await server.close();
     }
