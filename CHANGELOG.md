@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/zbdpay/agent-wallet/compare/1.0.2...1.0.3) (2026-02-26)
+
+### Bug Fixes
+
+* send bolt11 fetch payments without amount ([af480aa](https://github.com/zbdpay/agent-wallet/commit/af480aa73c9033ef74224745accbcc99b7b0feb7))
+
 ## [1.0.2](https://github.com/zbdpay/agent-wallet/compare/1.0.1...1.0.2) (2026-02-26)
 
 ### Bug Fixes
