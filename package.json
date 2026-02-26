@@ -19,7 +19,7 @@
   ],
   "type": "module",
   "bin": {
-    "zbdw": "./dist/cli.js"
+    "zbdw": "dist/cli.js"
   },
   "files": [
     "dist"
