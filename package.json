@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@zbdpay/agent-fetch": "file:../agent-fetch",
+    "@zbdpay/agent-fetch": "^1.0.2",
     "commander": "^12.1.0"
   },
   "devDependencies": {

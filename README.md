@@ -13,6 +13,19 @@
 npm install @zbdpay/agent-wallet
 ```
 
+Run without installation:
+
+```bash
+npx @zbdpay/agent-wallet init --key <apiKey>
+```
+
+Global install for frequent use:
+
+```bash
+npm install -g @zbdpay/agent-wallet
+zbdw balance
+```
+
 Local repo usage from `/Users/andreneves/Code/zbd/agents`:
 
 ```bash
