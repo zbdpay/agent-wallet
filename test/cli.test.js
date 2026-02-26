@@ -2,15 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CLI_PATH = new URL("../dist/cli.js", import.meta.url);
 
-function runCli(args, env = {}) {
+function runCliFromPath(cliPath, args, env = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLI_PATH.pathname, ...args], {
+    const child = spawn(process.execPath, [cliPath, ...args], {
       env: {
         ...process.env,
         ...env,
@@ -42,6 +42,10 @@ function runCli(args, env = {}) {
       });
     });
   });
+}
+
+function runCli(args, env = {}) {
+  return runCliFromPath(CLI_PATH.pathname, args, env);
 }
 
 async function withTempConfigPath(callback) {
@@ -117,6 +121,24 @@ test("help output lists planned command groups", async () => {
   assert.match(result.stdout, /payment/);
   assert.match(result.stdout, /withdraw/);
   assert.match(result.stdout, /fetch/);
+});
+
+test("help output works when cli is invoked via symlink path", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "zbdw-symlink-"));
+  const symlinkPath = join(tempDir, "zbdw");
+
+  try {
+    await symlink(CLI_PATH.pathname, symlinkPath);
+
+    const result = await runCliFromPath(symlinkPath, ["--help"]);
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /ZBD agent wallet CLI/);
+    assert.match(result.stdout, /init/);
+    assert.match(result.stdout, /fetch/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("unknown command exits 1 with structured json error", async () => {

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { Command, CommanderError } from "commander";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { registerCommandGroups } from "./commands/register.js";
 import { CliError, writeErrorJson } from "./output/json.js";
 
@@ -82,10 +84,19 @@ export async function run(argv = process.argv): Promise<number> {
   }
 }
 
-const isMainModule =
-  typeof process.argv[1] === "string" && import.meta.url === new URL(process.argv[1], "file://").href;
+function isMainModule(): boolean {
+  if (typeof process.argv[1] !== "string") {
+    return false;
+  }
 
-if (isMainModule) {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   run().then((exitCode) => {
     process.exitCode = exitCode;
   });
