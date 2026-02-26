@@ -116,6 +116,27 @@ zbdw fetch "https://your-protected-endpoint" --max-sats 100
 
 On the second call, `payment_id` should be `null` when cached token is reused.
 
+## Companion Examples You Can Run Now
+
+`agent-wallet` does not ship its own `examples/` folder yet, but the fastest end-to-end examples are in companion repos:
+
+- `../agent-pay/examples/http-server.mjs` (serve a paid endpoint)
+- `../agent-fetch/examples/zbd-agent-fetch.mjs` (pay and fetch that endpoint)
+
+From `/Users/andreneves/Code/zbd/agents`:
+
+```bash
+npm --prefix agent-pay run build
+ZBD_API_KEY=<your_api_key> npm --prefix agent-pay run example:http-server
+```
+
+Then in another terminal:
+
+```bash
+npm --prefix agent-wallet run build
+node agent-wallet/dist/cli.js fetch "http://localhost:8787/protected" --max-sats 100
+```
+
 ## Scripts
 
 ```bash
