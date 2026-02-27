@@ -59,6 +59,67 @@ export interface WithdrawStatusResult {
   amount_sats: number;
 }
 
+export type PaylinkLifecycle = "created" | "active" | "paid" | "expired" | "dead";
+
+export interface PaylinkResult {
+  id: string;
+  url: string | null;
+  status: string;
+  lifecycle: PaylinkLifecycle;
+  amount_sats: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  active_attempt_id?: string;
+  latest_attempt_id?: string;
+  paid_payment_id?: string;
+}
+
+export interface OnchainPayoutQuoteResult {
+  quote_id: string;
+  amount_sats: number;
+  fee_sats: number;
+  total_sats: number;
+  destination: string;
+  expires_at: string;
+}
+
+export interface OnchainPayoutCreateResult {
+  payout_id: string;
+  status: string;
+  amount_sats: number;
+  destination: string;
+  request_id: string | null;
+  kickoff: {
+    enqueued: boolean;
+    workflow: string | null;
+    kickoff_id: string | null;
+  };
+}
+
+export interface OnchainPayoutStatusResult {
+  payout_id: string;
+  status: string;
+  amount_sats: number | null;
+  destination: string | null;
+  txid: string | null;
+  failure_code: string | null;
+  kickoff: {
+    enqueued: boolean;
+    workflow: string | null;
+    kickoff_id: string | null;
+  };
+}
+
+export interface OnchainPayoutRetryClaimResult {
+  payout_id: string;
+  status: string;
+  kickoff: {
+    enqueued: boolean;
+    workflow: string | null;
+    kickoff_id: string | null;
+  };
+}
+
 export type SendDestinationKind = "bolt11" | "ln_address" | "gamertag" | "lnurl";
 
 export function resolveApiKey(options: {
@@ -432,6 +493,162 @@ export async function fetchWithdrawStatus(apiKey: string, withdrawId: string): P
   };
 }
 
+export async function createPaylink(
+  apiKey: string,
+  payload: { amount_sats: number },
+): Promise<PaylinkResult> {
+  const body = await requestZbdAiPaylinks(apiKey, "/api/paylinks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return toPaylinkResult(body);
+}
+
+export async function fetchPaylink(apiKey: string, id: string): Promise<PaylinkResult> {
+  const body = await requestZbdAiPaylinks(apiKey, `/api/paylinks/${encodeURIComponent(id)}`, {
+    method: "GET",
+  });
+
+  return toPaylinkResult(body, id);
+}
+
+export async function listPaylinks(apiKey: string): Promise<PaylinkResult[]> {
+  const body = await requestZbdAiPaylinks(apiKey, "/api/paylinks", {
+    method: "GET",
+  });
+
+  const directList = getAtPath(body, ["paylinks"]);
+  if (Array.isArray(directList)) {
+    return directList.map((item) => toPaylinkResult(item));
+  }
+
+  if (Array.isArray(body)) {
+    return body.map((item) => toPaylinkResult(item));
+  }
+
+  return [];
+}
+
+export async function cancelPaylink(apiKey: string, id: string): Promise<PaylinkResult> {
+  const body = await requestZbdAiPaylinks(apiKey, `/api/paylinks/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+  });
+
+  return toPaylinkResult(body, id);
+}
+
+export async function quoteOnchainPayout(
+  apiKey: string,
+  payload: { amount_sats: number; destination: string },
+): Promise<OnchainPayoutQuoteResult> {
+  const body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts/quote", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  const source = getOnchainPayoutSource(body);
+  const quoteId = pickString(source, ["quote_id"], ["quoteId"]);
+  const amountSats = parseSats(source, {
+    satPaths: [["amount_sats"], ["amountSats"]],
+    msatPaths: [["amount_msat"], ["amountMsat"]],
+  });
+  const feeSats = parseSats(source, {
+    satPaths: [["fee_sats"], ["feeSats"]],
+    msatPaths: [["fee_msat"], ["feeMsat"]],
+  });
+  const totalSats = parseSats(source, {
+    satPaths: [["total_sats"], ["totalSats"]],
+    msatPaths: [["total_msat"], ["totalMsat"]],
+  });
+  const destination = pickString(source, ["destination"]);
+  const expiresAt = pickString(source, ["expires_at"], ["expiresAt"]);
+
+  if (!quoteId || !destination || !expiresAt || amountSats <= 0 || totalSats <= 0) {
+    throw new CliError("onchain_payout_response_invalid", "Onchain payout quote response missing required fields");
+  }
+
+  return {
+    quote_id: quoteId,
+    amount_sats: amountSats,
+    fee_sats: feeSats,
+    total_sats: totalSats,
+    destination,
+    expires_at: expiresAt,
+  };
+}
+
+export async function createOnchainPayout(
+  apiKey: string,
+  payload: { amount_sats: number; destination: string; accept_terms: boolean; payout_id?: string },
+): Promise<OnchainPayoutCreateResult> {
+  const body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  const source = getOnchainPayoutSource(body);
+  const payoutId = pickString(source, ["payout_id"], ["payoutId"]);
+  const status = pickString(source, ["status"]);
+  const amountSats = parseSats(source, {
+    satPaths: [["amount_sats"], ["amountSats"]],
+    msatPaths: [["amount_msat"], ["amountMsat"]],
+  });
+  const destination = pickString(source, ["destination"]);
+
+  if (!payoutId || !status || amountSats <= 0 || !destination) {
+    throw new CliError("onchain_payout_response_invalid", "Onchain payout create response missing required fields");
+  }
+
+  return {
+    payout_id: payoutId,
+    status,
+    amount_sats: amountSats,
+    destination,
+    request_id: pickString(source, ["request_id"], ["requestId"]),
+    kickoff: parseKickoff(source),
+  };
+}
+
+export async function fetchOnchainPayout(apiKey: string, payoutId: string): Promise<OnchainPayoutStatusResult> {
+  const body = await requestZbdAiOnchainPayouts(apiKey, `/api/payouts/${encodeURIComponent(payoutId)}`, {
+    method: "GET",
+  });
+
+  const source = getOnchainPayoutSource(body);
+  const id = pickString(source, ["payout_id"], ["payoutId"]) ?? payoutId;
+  const status = pickString(source, ["status"]) ?? "unknown";
+
+  return {
+    payout_id: id,
+    status,
+    amount_sats: parseOptionalSats(source, {
+      satPaths: [["amount_sats"], ["amountSats"]],
+      msatPaths: [["amount_msat"], ["amountMsat"]],
+    }),
+    destination: pickString(source, ["destination"]),
+    txid: pickString(source, ["txid"]),
+    failure_code: pickString(source, ["failure_code"], ["failureCode"]),
+    kickoff: parseKickoff(source),
+  };
+}
+
+export async function retryOnchainClaim(apiKey: string, payoutId: string): Promise<OnchainPayoutRetryClaimResult> {
+  const body = await requestZbdAiOnchainPayouts(apiKey, `/api/payouts/${encodeURIComponent(payoutId)}/retry-claim`, {
+    method: "POST",
+  });
+
+  const source = getOnchainPayoutSource(body);
+  const id = pickString(source, ["payout_id"], ["payoutId"]) ?? payoutId;
+  const status = pickString(source, ["status"]) ?? "queued";
+
+  return {
+    payout_id: id,
+    status,
+    kickoff: parseKickoff(source),
+  };
+}
+
 function parseMsatValue(payload: WalletApiResponse | null): number | null {
   if (!payload) {
     return null;
@@ -576,6 +793,116 @@ async function requestZbd(apiKey: string, path: string, init: { method: string; 
   return body;
 }
 
+async function requestZbdAiPaylinks(
+  apiKey: string,
+  path: string,
+  init: { method: string; body?: string },
+): Promise<unknown> {
+  const apiBaseUrl = getZbdAiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: init.method,
+      headers: {
+        apikey: apiKey,
+        "x-api-key": apiKey,
+        "content-type": "application/json",
+      },
+      body: init.body,
+    });
+  } catch {
+    throw new CliError("paylink_unreachable", `Failed to reach paylinks API at ${apiBaseUrl}`);
+  }
+
+  const body = await safeJson(response);
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new CliError("invalid_api_key", "API key rejected by paylinks API");
+    }
+
+    const apiErrorCode = pickString(body, ["error"]);
+    const apiErrorMessage = pickString(body, ["message"]);
+    throw new CliError(
+      apiErrorCode ?? "paylink_request_failed",
+      apiErrorMessage ?? "Paylinks API request failed",
+      {
+        status: response.status,
+        response: body,
+        path,
+      },
+    );
+  }
+
+  const success = getAtPath(body, ["success"]);
+  if (success === false) {
+    throw new CliError(
+      pickString(body, ["error"]) ?? "paylink_request_failed",
+      pickString(body, ["message"], ["errorString"]) ?? "Paylinks API request failed",
+      {
+        status: response.status,
+        response: body,
+        path,
+      },
+    );
+  }
+
+  return body;
+}
+
+async function requestZbdAiOnchainPayouts(
+  apiKey: string,
+  path: string,
+  init: { method: string; body?: string },
+): Promise<unknown> {
+  const apiBaseUrl = getZbdAiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: init.method,
+      headers: {
+        apikey: apiKey,
+        "x-api-key": apiKey,
+        "content-type": "application/json",
+      },
+      body: init.body,
+    });
+  } catch {
+    throw new CliError("onchain_payout_unreachable", `Failed to reach onchain payout API at ${apiBaseUrl}`);
+  }
+
+  const body = await safeJson(response);
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new CliError("invalid_api_key", "API key rejected by onchain payout API");
+    }
+
+    throw new CliError(
+      pickString(body, ["error"]) ?? "onchain_payout_request_failed",
+      pickString(body, ["message"], ["errorString"]) ?? "Onchain payout API request failed",
+      {
+        status: response.status,
+        response: body,
+        path,
+      },
+    );
+  }
+
+  const success = getAtPath(body, ["success"]);
+  if (success === false) {
+    throw new CliError(
+      pickString(body, ["error"]) ?? "onchain_payout_request_failed",
+      pickString(body, ["message"], ["errorString"]) ?? "Onchain payout API request failed",
+      {
+        status: response.status,
+        response: body,
+        path,
+      },
+    );
+  }
+
+  return body;
+}
+
 function normalizeLightningUri(value: string): string {
   if (value.toLowerCase().startsWith("lightning:")) {
     return value.slice("lightning:".length);
@@ -607,6 +934,136 @@ function parseSats(
   }
 
   return options.fallback ?? 0;
+}
+
+function parseOptionalSats(
+  payload: unknown,
+  options: {
+    msatPaths: string[][];
+    satPaths: string[][];
+  },
+): number | null {
+  for (const path of options.satPaths) {
+    const value = toNumber(getAtPath(payload, path));
+    if (value !== null) {
+      return Math.floor(value);
+    }
+  }
+
+  for (const path of options.msatPaths) {
+    const value = toNumber(getAtPath(payload, path));
+    if (value !== null) {
+      return Math.floor(value / 1000);
+    }
+  }
+
+  return null;
+}
+
+function getOnchainPayoutSource(payload: unknown): unknown {
+  return getAtPath(payload, ["data"]) ?? payload;
+}
+
+function parseKickoff(payload: unknown): { enqueued: boolean; workflow: string | null; kickoff_id: string | null } {
+  const kickoff = getAtPath(payload, ["kickoff"]);
+  if (!kickoff || typeof kickoff !== "object") {
+    return {
+      enqueued: false,
+      workflow: null,
+      kickoff_id: null,
+    };
+  }
+
+  return {
+    enqueued: getAtPath(kickoff, ["enqueued"]) === true,
+    workflow: pickString(kickoff, ["workflow"]),
+    kickoff_id: pickString(kickoff, ["kickoff_id"], ["kickoffId"]),
+  };
+}
+
+function toPaylinkResult(payload: unknown, fallbackId?: string): PaylinkResult {
+  const source = getAtPath(payload, ["paylink"]) ?? getAtPath(payload, ["data"]) ?? payload;
+  const id =
+    pickString(source, ["id"], ["paylink_id"], ["paylinkId"]) ??
+    pickString(payload, ["id"], ["paylink_id"], ["paylinkId"]) ??
+    fallbackId;
+  if (!id) {
+    throw new CliError("paylink_response_invalid", "Paylink response missing id");
+  }
+
+  const status =
+    pickString(source, ["status"], ["state"]) ?? pickString(payload, ["status"], ["state"]) ?? "created";
+  const lifecycleRaw =
+    pickString(source, ["lifecycle"], ["paylink_lifecycle"], ["state"]) ??
+    pickString(payload, ["lifecycle"], ["paylink_lifecycle"], ["state"]) ??
+    status;
+
+  const amountSats = parseSats(source, {
+    msatPaths: [["amount_msat"], ["amountMsat"]],
+    satPaths: [["amount_sats"], ["amountSats"], ["amount"]],
+  });
+  const hasAmount =
+    toNumber(getAtPath(source, ["amount_sats"])) !== null ||
+    toNumber(getAtPath(source, ["amountSats"])) !== null ||
+    toNumber(getAtPath(source, ["amount"])) !== null ||
+    toNumber(getAtPath(source, ["amount_msat"])) !== null ||
+    toNumber(getAtPath(source, ["amountMsat"])) !== null;
+
+  return {
+    id,
+    url:
+      pickString(source, ["url"], ["checkout_url"], ["checkoutUrl"], ["paylink_url"], ["paylinkUrl"]) ??
+      pickString(payload, ["url"], ["checkout_url"], ["checkoutUrl"], ["paylink_url"], ["paylinkUrl"]) ??
+      null,
+    status,
+    lifecycle: parsePaylinkLifecycle(lifecycleRaw),
+    amount_sats: hasAmount ? amountSats : null,
+    created_at:
+      pickString(source, ["created_at"], ["createdAt"], ["timestamp"]) ??
+      pickString(payload, ["created_at"], ["createdAt"], ["timestamp"]) ??
+      null,
+    updated_at:
+      pickString(source, ["updated_at"], ["updatedAt"]) ??
+      pickString(payload, ["updated_at"], ["updatedAt"]) ??
+      null,
+    active_attempt_id:
+      pickString(payload, ["activeAttempt", "id"], ["active_attempt", "id"], ["attempt", "id"]) ??
+      undefined,
+    latest_attempt_id: pickString(payload, ["latestAttempt", "id"], ["latest_attempt", "id"]) ?? undefined,
+    paid_payment_id:
+      pickString(
+        source,
+        ["paid_payment_id"],
+        ["paidPaymentId"],
+        ["window", "paidPaymentId"],
+        ["window", "paid_payment_id"],
+      ) ??
+      pickString(payload, ["paid_payment_id"], ["paidPaymentId"]) ??
+      undefined,
+  };
+}
+
+function parsePaylinkLifecycle(value: string): PaylinkLifecycle {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "created" ||
+    normalized === "active" ||
+    normalized === "paid" ||
+    normalized === "expired" ||
+    normalized === "dead"
+  ) {
+    return normalized;
+  }
+
+  if (normalized === "completed") {
+    return "paid";
+  }
+
+  if (normalized === "cancelled") {
+    return "dead";
+  }
+
+  return "created";
 }
 
 function pickStatus(payload: unknown, fallback: string): string {

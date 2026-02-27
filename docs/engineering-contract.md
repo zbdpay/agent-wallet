@@ -163,4 +163,146 @@ ZBD operates on mainnet only. No testnet or signet flag is supported or needed.
 
 ---
 
-*Last updated: 2026-02-25. Maintained by the ZBD agent suite team.*
+*Last updated: 2026-02-27. Maintained by the ZBD agent suite team.*
+
+---
+
+## 5. Onchain Payout Contract
+
+### 5.1 Command Group
+
+The `onchain` subcommand group exposes four commands:
+
+| Command | Description |
+|---|---|
+| `zbdw onchain quote <amount_sats> <destination>` | Get a fee quote for an onchain payout |
+| `zbdw onchain send <amount_sats> <destination> --accept-terms` | Create an onchain payout |
+| `zbdw onchain status <payout_id>` | Fetch current payout status |
+| `zbdw onchain retry-claim <payout_id>` | Re-enqueue claim workflow for a failed payout |
+
+All four commands call `ZBD_AI_BASE_URL` (default `https://zbd.ai`) payout routes. No direct Boltz or onchain calls are made from the CLI.
+
+### 5.2 Consent Requirement
+
+`zbdw onchain send` MUST require the `--accept-terms` flag. This is a local preflight check that runs before API key resolution and before any outbound request.
+
+If `--accept-terms` is absent, the command MUST exit 1 with:
+
+```json
+{"error":"accept_terms_required","message":"Onchain send requires --accept-terms to confirm consent"}
+```
+
+The CLI MUST NOT send `accept_terms: true` to the API unless the flag was explicitly provided. The API-side consent failure code is `invalid_consent` (HTTP 400).
+
+### 5.3 Onchain Quote Output Contract
+
+```json
+{
+  "quote_id": "q_001",
+  "amount_sats": 10000,
+  "fee_sats": 150,
+  "total_sats": 10150,
+  "destination": "bc1qexample...",
+  "expires_at": "2026-02-27T00:05:00.000Z"
+}
+```
+
+Required fields: `quote_id`, `amount_sats`, `fee_sats`, `total_sats`, `destination`, `expires_at`. If any are missing, the command MUST exit 1 with `onchain_payout_response_invalid`.
+
+### 5.4 Onchain Send Output Contract
+
+```json
+{
+  "payout_id": "payout_123",
+  "status": "queued",
+  "amount_sats": 10000,
+  "destination": "bc1qexample...",
+  "request_id": "req_abc123",
+  "kickoff": {
+    "enqueued": true,
+    "workflow": "payout.workflow.root",
+    "kickoff_id": "k_001"
+  }
+}
+```
+
+Required fields: `payout_id`, `status`, `amount_sats`, `destination`. `request_id` and `kickoff` fields are always present but may be `null`.
+
+A successful `onchain send` MUST append a record to `~/.zbd-wallet/payments.json` with these additional fields:
+
+```json
+{
+  "id": "payout_123",
+  "type": "send",
+  "amount_sats": 10000,
+  "status": "queued",
+  "timestamp": "2026-02-27T00:00:00.000Z",
+  "source": "onchain",
+  "onchain_network": "bitcoin",
+  "onchain_address": "bc1qexample...",
+  "onchain_payout_id": "payout_123"
+}
+```
+
+### 5.5 Onchain Status Output Contract
+
+```json
+{
+  "payout_id": "payout_123",
+  "status": "broadcasting",
+  "amount_sats": 10000,
+  "destination": "bc1qexample...",
+  "txid": null,
+  "failure_code": null,
+  "kickoff": {
+    "enqueued": true,
+    "workflow": "payout.workflow.root",
+    "kickoff_id": "k_001"
+  }
+}
+```
+
+Fields `amount_sats`, `destination`, `txid`, and `failure_code` may be `null` when not yet available. `failure_code` is set when status is `failed_invoice_expired` or `failed_lockup`.
+
+### 5.6 Retry-Claim Output Contract
+
+```json
+{
+  "payout_id": "payout_123",
+  "status": "queued",
+  "kickoff": {
+    "enqueued": true,
+    "workflow": "payout.workflow.root",
+    "kickoff_id": "k_002"
+  }
+}
+```
+
+`retry-claim` is only meaningful when the payout status is `failed_invoice_expired`. Calling it on a terminal-succeeded or non-retryable payout is a no-op at the API level.
+
+### 5.7 Payout Status Values
+
+Payout status values are deterministic, machine-readable, and lowercase snake_case:
+
+| Status | Terminal | Meaning |
+|---|---|---|
+| `created` | no | Payout request accepted |
+| `queued` | no | Payout queued for execution |
+| `broadcasting` | no | Payout executing on network |
+| `succeeded` | yes | Payout completed successfully |
+| `failed_invoice_expired` | yes | Invoice expired before claim completed; retry-claim is available |
+| `failed_lockup` | yes | Lockup or claim path failure |
+| `refunded` | yes | Funds returned to source |
+| `manual_review` | yes | Requires manual intervention |
+
+### 5.8 Onchain Error Codes
+
+| Error code | Trigger |
+|---|---|
+| `accept_terms_required` | `onchain send` called without `--accept-terms` |
+| `onchain_payout_response_invalid` | API response missing required fields |
+| `onchain_payout_request_failed` | Non-401 API error from payout service |
+| `onchain_payout_unreachable` | Network failure reaching `ZBD_AI_BASE_URL` |
+| `invalid_api_key` | 401 from payout API |
+
+The API-side consent failure code is `invalid_consent` (HTTP 400). This is distinct from the CLI-side `accept_terms_required` which fires before any network call.

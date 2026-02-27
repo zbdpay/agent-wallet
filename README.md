@@ -56,8 +56,18 @@ zbdw send <destination> <amount_sats>
 zbdw payments
 zbdw payment <id>
 
+zbdw paylink create <amount_sats>
+zbdw paylink get <id>
+zbdw paylink list
+zbdw paylink cancel <id>
+
 zbdw withdraw create <amount_sats>
 zbdw withdraw status <withdraw_id>
+
+zbdw onchain quote <amount_sats> <destination>
+zbdw onchain send <amount_sats> <destination> --accept-terms [--payout-id <id>]
+zbdw onchain status <payout_id>
+zbdw onchain retry-claim <payout_id>
 
 zbdw fetch <url> [--method <method>] [--data <json>] [--max-sats <amount>]
 ```
@@ -68,6 +78,61 @@ zbdw fetch <url> [--method <method>] [--data <json>] [--max-sats <amount>]
 - `lnurl...` -> LNURL
 - `@name` -> ZBD gamertag
 - `name@domain.com` -> Lightning address
+
+### Paylink Commands
+
+Paylinks are hosted payment pages at `zbd.ai/paylinks/<id>`. Share the `url` with a payer; the link handles the invoice lifecycle.
+
+```bash
+# Create a paylink for 250 sats
+zbdw paylink create 250
+# {"id":"pl_001","url":"https://zbd.ai/paylinks/pl_001","status":"active","lifecycle":"active","amount_sats":250}
+
+# Fetch current state (also syncs settlement to local payments.json)
+zbdw paylink get pl_001
+# {"id":"pl_001","url":"...","status":"active","lifecycle":"active","amount_sats":250,"created_at":"...","updated_at":"..."}
+
+# List all paylinks
+zbdw paylink list
+# {"paylinks":[...]}
+
+# Cancel a paylink (transitions lifecycle to dead)
+zbdw paylink cancel pl_001
+# {"id":"pl_001","url":"...","status":"dead","lifecycle":"dead"}
+```
+
+**Lifecycle values:** `created` -> `active` -> `paid | expired | dead`
+
+Terminal states (`paid`, `expired`, `dead`) are permanent. A paid link cannot be reused; an expired or cancelled link cannot be reactivated.
+
+`paylink get` also polls the latest payment attempt and appends a settlement record to `~/.zbd-wallet/payments.json` with `paylink_id`, `paylink_lifecycle`, and `paylink_amount_sats` metadata.
+## Onchain Payout Commands
+
+Onchain payouts send bitcoin to a native BTC address via the `zbd-ai` payout service.
+
+```bash
+# Get a fee quote before sending
+zbdw onchain quote 10000 bc1qexample...
+# {"quote_id":"q_001","amount_sats":10000,"fee_sats":150,"total_sats":10150,"destination":"bc1q...","expires_at":"..."}
+
+# Send onchain (--accept-terms is required)
+zbdw onchain send 10000 bc1qexample... --accept-terms
+# {"payout_id":"payout_123","status":"queued","amount_sats":10000,"destination":"bc1q...","request_id":"req_abc","kickoff":{"enqueued":true,"workflow":"payout.workflow.root","kickoff_id":"k_001"}}
+
+# Check payout status
+zbdw onchain status payout_123
+# {"payout_id":"payout_123","status":"broadcasting","amount_sats":10000,"destination":"bc1q...","txid":null,"failure_code":null,"kickoff":{...}}
+
+# Retry claim after a failed_invoice_expired payout
+zbdw onchain retry-claim payout_123
+# {"payout_id":"payout_123","status":"queued","kickoff":{"enqueued":true,"workflow":"payout.workflow.root","kickoff_id":"k_002"}}
+```
+
+**`--accept-terms` is required for `onchain send`.** Omitting it exits immediately with `accept_terms_required` and makes no outbound request.
+
+**Payout status values:** `created` -> `queued` -> `broadcasting` -> `succeeded` (terminal) or `failed_invoice_expired` | `failed_lockup` | `refunded` | `manual_review` (terminal)
+
+Successful `onchain send` appends a record to `~/.zbd-wallet/payments.json` with `source: "onchain"`, `onchain_network`, `onchain_address`, and `onchain_payout_id` metadata.
 
 ## JSON Output Contract
 
@@ -88,15 +153,23 @@ Examples:
 - `init`: `{ "lightningAddress": "name@zbd.ai", "status": "ok" }`
 - `info`: `{ "lightningAddress": "...", "apiKey": "***", "balance_sats": 123 }`
 - `fetch`: `{ "status": 200, "body": {...}, "payment_id": "...|null", "amount_paid_sats": 21|null }`
-
+- `paylink create`: `{ "id": "pl_001", "url": "https://zbd.ai/paylinks/pl_001", "status": "active", "lifecycle": "active", "amount_sats": 250 }`
+- `paylink get`: adds `created_at` and `updated_at` to the above
+- `paylink list`: `{ "paylinks": [...] }` where each item matches `paylink get` shape
+- `paylink cancel`: `{ "id": "...", "url": "...", "status": "dead", "lifecycle": "dead" }`
+- `onchain quote`: `{ "quote_id": "...", "amount_sats": N, "fee_sats": N, "total_sats": N, "destination": "...", "expires_at": "..." }`
+- `onchain send`: `{ "payout_id": "...", "status": "queued", "amount_sats": N, "destination": "...", "request_id": "...", "kickoff": {...} }`
+- `onchain status`: `{ "payout_id": "...", "status": "...", "amount_sats": N|null, "destination": "...", "txid": "...|null", "failure_code": "...|null", "kickoff": {...} }`
+- `onchain retry-claim`: `{ "payout_id": "...", "status": "queued", "kickoff": {...} }`
 ## Storage Files
 
 - Config: `~/.zbd-wallet/config.json`
   - `apiKey`
   - `lightningAddress`
 - Payment history: `~/.zbd-wallet/payments.json`
+  - paylink settlement records include `paylink_id`, `paylink_lifecycle`, `paylink_amount_sats`
+  - onchain payout records include `source: "onchain"`, `onchain_network`, `onchain_address`, `onchain_payout_id`
 - Token cache: `~/.zbd-wallet/token-cache.json`
-
 ## L402 Fetch Flow
 
 `zbdw fetch` is powered by `@zbdpay/agent-fetch`.
@@ -156,3 +229,10 @@ npm run release:dry-run
   - confirm upstream `ZBD_API_BASE_URL` and API key are valid for static charge creation
 - `wallet_response_invalid` during `info`/`balance`
   - verify wallet endpoint returns a valid balance shape and that `ZBD_API_BASE_URL` is correct
+- `accept_terms_required` during `onchain send`
+  - add `--accept-terms` flag to confirm consent; the flag is required and there is no interactive prompt
+- `onchain_payout_request_failed` during `onchain send/status/retry-claim`
+  - verify `ZBD_AI_BASE_URL` points to your running `zbd-ai` instance
+  - inspect `details.status` and `details.response` for upstream error context
+- `failed_invoice_expired` payout status
+  - the payout's internal invoice expired before the claim completed; run `zbdw onchain retry-claim <payout_id>` to re-enqueue

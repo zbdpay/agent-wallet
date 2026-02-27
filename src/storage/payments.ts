@@ -2,6 +2,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+export type PaymentPaylinkLifecycle = "created" | "active" | "paid" | "expired" | "dead";
+
+export interface PaymentPaylinkMetadata {
+  paylink_id?: string;
+  paylink_lifecycle?: PaymentPaylinkLifecycle;
+  paylink_amount_sats?: number;
+}
+
 export interface PaymentHistoryRecord {
   id: string;
   type: "send" | "receive";
@@ -10,6 +18,14 @@ export interface PaymentHistoryRecord {
   timestamp: string;
   fee_sats?: number;
   preimage?: string;
+  source?: string;
+  paylink_id?: string;
+  paylink_attempt_id?: string;
+  paylink_lifecycle?: PaymentPaylinkLifecycle;
+  paylink_amount_sats?: number;
+  onchain_network?: string;
+  onchain_address?: string;
+  onchain_payout_id?: string;
 }
 
 export function getPaymentsPath(): string {
@@ -32,6 +48,20 @@ export async function appendPayment(record: PaymentHistoryRecord): Promise<void>
   current.push(record);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+}
+
+export async function appendPaymentIfMissingById(record: PaymentHistoryRecord): Promise<boolean> {
+  const path = getPaymentsPath();
+  const current = await readPayments();
+  const exists = current.some((item) => item.id === record.id);
+  if (exists) {
+    return false;
+  }
+
+  current.push(record);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+  return true;
 }
 
 export async function findPaymentById(id: string): Promise<PaymentHistoryRecord | null> {
@@ -78,6 +108,46 @@ function normalizeRecords(value: unknown): PaymentHistoryRecord[] {
       record.preimage = preimage;
     }
 
+    const source = asString((item as Record<string, unknown>).source);
+    if (source) {
+      record.source = source;
+    }
+
+    const paylinkId = asString((item as Record<string, unknown>).paylink_id);
+    if (paylinkId) {
+      record.paylink_id = paylinkId;
+    }
+
+    const paylinkAttemptId = asString((item as Record<string, unknown>).paylink_attempt_id);
+    if (paylinkAttemptId) {
+      record.paylink_attempt_id = paylinkAttemptId;
+    }
+
+    const paylinkLifecycle = asPaylinkLifecycle((item as Record<string, unknown>).paylink_lifecycle);
+    if (paylinkLifecycle) {
+      record.paylink_lifecycle = paylinkLifecycle;
+    }
+
+    const paylinkAmountSats = toNumber((item as Record<string, unknown>).paylink_amount_sats);
+    if (paylinkAmountSats !== null) {
+      record.paylink_amount_sats = paylinkAmountSats;
+    }
+
+    const onchainNetwork = asString((item as Record<string, unknown>).onchain_network);
+    if (onchainNetwork) {
+      record.onchain_network = onchainNetwork;
+    }
+
+    const onchainAddress = asString((item as Record<string, unknown>).onchain_address);
+    if (onchainAddress) {
+      record.onchain_address = onchainAddress;
+    }
+
+    const onchainPayoutId = asString((item as Record<string, unknown>).onchain_payout_id);
+    if (onchainPayoutId) {
+      record.onchain_payout_id = onchainPayoutId;
+    }
+
     records.push(record);
   }
 
@@ -103,6 +173,25 @@ function toNumber(value: unknown): number | null {
     if (Number.isFinite(parsed)) {
       return parsed;
     }
+  }
+
+  return null;
+}
+
+function asPaylinkLifecycle(value: unknown): PaymentPaylinkLifecycle | null {
+  const normalized = asString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    normalized === "created" ||
+    normalized === "active" ||
+    normalized === "paid" ||
+    normalized === "expired" ||
+    normalized === "dead"
+  ) {
+    return normalized;
   }
 
   return null;

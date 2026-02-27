@@ -1,3 +1,23 @@
+## [1.1.0] (2026-02-26)
+
+### Features
+
+* add `paylink` command group (`create`, `get`, `list`, `cancel`) backed by `zbd.ai` paylinks API
+  - `paylink create <amount_sats>` creates a hosted payment page at `https://zbd.ai/paylinks/<id>`
+  - `paylink get <id>` fetches current state and syncs settlement to local `payments.json`
+  - `paylink list` returns all paylinks with full lifecycle and timestamp fields
+  - `paylink cancel <id>` transitions lifecycle to `dead` (terminal, irreversible)
+  - lifecycle vocabulary: `created | active | paid | expired | dead`; terminal states are `paid`, `expired`, `dead`
+  - settlement projection on `paylink get` appends `paylink_id`, `paylink_lifecycle`, `paylink_amount_sats` to payment history
+  - idempotent append: repeated `paylink get` calls for the same settled payment do not create duplicate records
+  - requires `ZBD_AI_BASE_URL` (default `https://zbd.ai`); uses `x-api-key` header for paylinks API
+
+### Compatibility
+
+* existing `payments.json` records without paylink metadata remain valid; paylink fields are additive
+* `ZBD_WALLET_PAYLINKS` env var overrides local paylinks storage path (default `~/.zbd-wallet/paylinks.json`)
+
+
 ## [1.0.3](https://github.com/zbdpay/agent-wallet/compare/1.0.2...1.0.3) (2026-02-26)
 
 ### Bug Fixes

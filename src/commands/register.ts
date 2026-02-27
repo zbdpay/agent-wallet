@@ -10,18 +10,33 @@ import {
 } from "@zbdpay/agent-fetch";
 import { loadWalletConfig, saveWalletConfig } from "../config/load-config.js";
 import { CliError, writeJson } from "../output/json.js";
-import { appendPayment, findPaymentById, readPayments } from "../storage/payments.js";
 import {
+  appendPayment,
+  appendPaymentIfMissingById,
+  findPaymentById,
+  readPayments,
+  type PaymentPaylinkLifecycle,
+} from "../storage/payments.js";
+import {
+  cancelPaylink,
+  createOnchainPayout,
   createReceiveInvoice,
+  createPaylink,
   createStaticCharge,
   createWithdrawRequest,
+  fetchOnchainPayout,
+  fetchPaylink,
   fetchPaymentDetail,
+  listPaylinks,
+  quoteOnchainPayout,
   fetchWalletBalanceSats,
+  retryOnchainClaim,
   fetchWithdrawStatus,
   registerWalletIdentity,
   resolveApiKey,
   sendPayment,
   type SendDestinationKind,
+  type PaylinkResult,
 } from "../wallet/client.js";
 
 export function registerCommandGroups(program: Command): void {
@@ -228,6 +243,104 @@ export function registerCommandGroups(program: Command): void {
       writeJson(detail);
     });
 
+  const paylink = program
+    .command("paylink")
+    .description("Manage hosted paylinks");
+
+  paylink
+    .command("create")
+    .description("Create a paylink")
+    .argument("<amount_sats>", "Amount to collect in sats")
+    .action(async (amountSats: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const amount = parseAmountSats(amountSats);
+      const result = await createPaylink(apiKey, { amount_sats: amount });
+      writeJson({
+        id: result.id,
+        url: result.url,
+        status: result.status,
+        lifecycle: result.lifecycle,
+        amount_sats: result.amount_sats,
+      });
+    });
+
+  paylink
+    .command("get")
+    .description("Get paylink details")
+    .argument("<id>", "Paylink identifier")
+    .action(async (id: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const result = await fetchPaylink(apiKey, id);
+      await syncPaylinkSettlementProjection(apiKey, result);
+      writeJson({
+        id: result.id,
+        url: result.url,
+        status: result.status,
+        lifecycle: result.lifecycle,
+        amount_sats: result.amount_sats,
+        created_at: result.created_at,
+        updated_at: result.updated_at,
+      });
+    });
+
+  paylink
+    .command("list")
+    .description("List paylinks")
+    .action(async () => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const records = await listPaylinks(apiKey);
+      writeJson({
+        paylinks: records.map((result) => ({
+          id: result.id,
+          url: result.url,
+          status: result.status,
+          lifecycle: result.lifecycle,
+          amount_sats: result.amount_sats,
+          created_at: result.created_at,
+          updated_at: result.updated_at,
+        })),
+      });
+    });
+
+  paylink
+    .command("cancel")
+    .description("Cancel a paylink")
+    .argument("<id>", "Paylink identifier")
+    .action(async (id: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const result = await cancelPaylink(apiKey, id);
+      writeJson({
+        id: result.id,
+        url: result.url,
+        status: result.status,
+        lifecycle: result.lifecycle,
+      });
+    });
+
   const withdraw = program
     .command("withdraw")
     .description("Manage LNURL-withdraw flows")
@@ -295,6 +408,129 @@ export function registerCommandGroups(program: Command): void {
       });
 
       const result = await fetchWithdrawStatus(apiKey, withdrawId);
+      writeJson(result);
+    });
+
+  const onchain = program
+    .command("onchain")
+    .description("Manage onchain payout flows");
+
+  onchain
+    .command("quote")
+    .description("Quote an onchain payout")
+    .argument("<amount_sats>", "Amount to send in sats")
+    .argument("<destination>", "Onchain destination address")
+    .action(async (amountSats: string, destination: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const amount = parseAmountSats(amountSats);
+      const result = await quoteOnchainPayout(apiKey, {
+        amount_sats: amount,
+        destination,
+      });
+
+      writeJson({
+        quote_id: result.quote_id,
+        amount_sats: result.amount_sats,
+        fee_sats: result.fee_sats,
+        total_sats: result.total_sats,
+        destination: result.destination,
+        expires_at: result.expires_at,
+      });
+    });
+
+  onchain
+    .command("send")
+    .description("Create an onchain payout")
+    .argument("<amount_sats>", "Amount to send in sats")
+    .argument("<destination>", "Onchain destination address")
+    .option("--payout-id <id>", "Optional idempotency payout id")
+    .option("--accept-terms", "Accept onchain payout terms")
+    .action(
+      async (
+        amountSats: string,
+        destination: string,
+        options?: { payoutId?: string; acceptTerms?: boolean },
+      ) => {
+        if (!options?.acceptTerms) {
+          throw new CliError(
+            "accept_terms_required",
+            "Onchain send requires --accept-terms to confirm consent",
+          );
+        }
+
+        const config = await loadWalletConfig();
+        const { apiKey } = resolveApiKey({
+          envKey: process.env.ZBD_API_KEY,
+          configKey: config?.apiKey,
+          allowConfigFallback: true,
+        });
+
+        const amount = parseAmountSats(amountSats);
+        const result = await createOnchainPayout(apiKey, {
+          amount_sats: amount,
+          destination,
+          accept_terms: true,
+          payout_id: options?.payoutId,
+        });
+
+        await appendPayment({
+          id: result.payout_id,
+          type: "send",
+          amount_sats: result.amount_sats,
+          status: result.status,
+          timestamp: new Date().toISOString(),
+          source: "onchain",
+          onchain_network: "bitcoin",
+          onchain_address: result.destination,
+          onchain_payout_id: result.payout_id,
+        });
+
+        writeJson({
+          payout_id: result.payout_id,
+          status: result.status,
+          amount_sats: result.amount_sats,
+          destination: result.destination,
+          request_id: result.request_id,
+          kickoff: result.kickoff,
+        });
+      },
+    );
+
+  onchain
+    .command("status")
+    .description("Get onchain payout status")
+    .argument("<payout_id>", "Onchain payout identifier")
+    .action(async (payoutId: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const result = await fetchOnchainPayout(apiKey, payoutId);
+      writeJson(result);
+    });
+
+  onchain
+    .command("retry-claim")
+    .description("Retry claim workflow for an onchain payout")
+    .argument("<payout_id>", "Onchain payout identifier")
+    .action(async (payoutId: string) => {
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const result = await retryOnchainClaim(apiKey, payoutId);
       writeJson(result);
     });
 
@@ -470,6 +706,46 @@ function mapSettlementStatus(status: string): PaymentSettlement["status"] {
   }
 
   return "pending";
+}
+
+function mapPaylinkLifecycleFromSettlementStatus(
+  settlementStatus: PaymentSettlement["status"],
+  currentLifecycle: PaylinkResult["lifecycle"],
+): PaymentPaylinkLifecycle {
+  if (settlementStatus === "completed") {
+    return "paid";
+  }
+
+  if (settlementStatus === "failed") {
+    return currentLifecycle === "expired" ? "expired" : "dead";
+  }
+
+  return currentLifecycle === "created" || currentLifecycle === "active" ? currentLifecycle : "active";
+}
+
+async function syncPaylinkSettlementProjection(apiKey: string, paylink: PaylinkResult): Promise<void> {
+  const settlementPaymentId = paylink.paid_payment_id ?? paylink.latest_attempt_id ?? paylink.active_attempt_id;
+  if (!settlementPaymentId) {
+    return;
+  }
+
+  const detail = await fetchPaymentDetail(apiKey, settlementPaymentId);
+  const settlementStatus = mapSettlementStatus(detail.status);
+  const projectedLifecycle = mapPaylinkLifecycleFromSettlementStatus(settlementStatus, paylink.lifecycle);
+
+  await appendPaymentIfMissingById({
+    id: detail.id,
+    type: "receive",
+    amount_sats: detail.amount_sats,
+    status: settlementStatus,
+    timestamp: detail.timestamp,
+    preimage: detail.preimage,
+    source: "paylink",
+    paylink_id: paylink.id,
+    paylink_attempt_id: settlementPaymentId,
+    paylink_lifecycle: projectedLifecycle,
+    paylink_amount_sats: paylink.amount_sats ?? undefined,
+  });
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {
