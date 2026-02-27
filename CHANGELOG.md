@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/zbdpay/agent-wallet/compare/1.1.0...1.2.0) (2026-02-27)
+
+### Features
+
+* support range and multi-use paylink create options ([e02e90e](https://github.com/zbdpay/agent-wallet/commit/e02e90eb3f10e4b3ee2877bba2c8053f127d830c))
+
 ## [1.1.0](https://github.com/zbdpay/agent-wallet/compare/1.0.3...1.1.0) (2026-02-27)
 
 ### Features
