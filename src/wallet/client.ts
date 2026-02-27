@@ -66,7 +66,20 @@ export interface PaylinkResult {
   url: string | null;
   status: string;
   lifecycle: PaylinkLifecycle;
+  amount_mode?: "fixed" | "range";
   amount_sats: number | null;
+  min_amount_sats?: number | null;
+  max_amount_sats?: number | null;
+  multi_use?: boolean;
+  max_uses?: number | null;
+  use_count?: number | null;
+  metadata?: {
+    title?: string;
+    description?: string;
+    order_id?: string;
+    customer_ref?: string;
+    campaign?: string;
+  };
   created_at: string | null;
   updated_at: string | null;
   active_attempt_id?: string;
@@ -495,7 +508,20 @@ export async function fetchWithdrawStatus(apiKey: string, withdrawId: string): P
 
 export async function createPaylink(
   apiKey: string,
-  payload: { amount_sats: number },
+  payload: {
+    amount_sats?: number;
+    min_amount_sats?: number;
+    max_amount_sats?: number;
+    multi_use?: boolean;
+    max_uses?: number | null;
+    metadata?: {
+      title?: string;
+      description?: string;
+      order_id?: string;
+      customer_ref?: string;
+      campaign?: string;
+    };
+  },
 ): Promise<PaylinkResult> {
   const body = await requestZbdAiPaylinks(apiKey, "/api/paylinks", {
     method: "POST",
@@ -1017,7 +1043,29 @@ function toPaylinkResult(payload: unknown, fallbackId?: string): PaylinkResult {
       null,
     status,
     lifecycle: parsePaylinkLifecycle(lifecycleRaw),
+    amount_mode:
+      pickString(source, ["amount_mode"], ["amountMode"], ["config", "amount_mode"], ["config", "amountMode"]) ===
+      "range"
+        ? "range"
+        : "fixed",
     amount_sats: hasAmount ? amountSats : null,
+    min_amount_sats: toNumber(getAtPath(source, ["min_amount_sats"])) ?? toNumber(getAtPath(source, ["minAmountSats"])),
+    max_amount_sats: toNumber(getAtPath(source, ["max_amount_sats"])) ?? toNumber(getAtPath(source, ["maxAmountSats"])),
+    multi_use: getAtPath(source, ["multi_use"]) === true || getAtPath(source, ["multiUse"]) === true,
+    max_uses:
+      toNumber(getAtPath(source, ["max_uses"])) ?? toNumber(getAtPath(source, ["maxUses"])) ??
+      (getAtPath(source, ["max_uses"]) === null || getAtPath(source, ["maxUses"]) === null ? null : undefined),
+    use_count: toNumber(getAtPath(source, ["use_count"])) ?? toNumber(getAtPath(source, ["useCount"])),
+    metadata:
+      getAtPath(source, ["metadata"]) && typeof getAtPath(source, ["metadata"]) === "object"
+        ? {
+            title: pickString(getAtPath(source, ["metadata"]), ["title"]) ?? undefined,
+            description: pickString(getAtPath(source, ["metadata"]), ["description"]) ?? undefined,
+            order_id: pickString(getAtPath(source, ["metadata"]), ["order_id"]) ?? undefined,
+            customer_ref: pickString(getAtPath(source, ["metadata"]), ["customer_ref"]) ?? undefined,
+            campaign: pickString(getAtPath(source, ["metadata"]), ["campaign"]) ?? undefined,
+          }
+        : undefined,
     created_at:
       pickString(source, ["created_at"], ["createdAt"], ["timestamp"]) ??
       pickString(payload, ["created_at"], ["createdAt"], ["timestamp"]) ??

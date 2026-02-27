@@ -250,8 +250,31 @@ export function registerCommandGroups(program: Command): void {
   paylink
     .command("create")
     .description("Create a paylink")
-    .argument("<amount_sats>", "Amount to collect in sats")
-    .action(async (amountSats: string) => {
+    .argument("[amount_sats]", "Amount to collect in sats (fixed mode)")
+    .option("--min-sats <amount>", "Minimum amount for custom amount mode")
+    .option("--max-sats <amount>", "Maximum amount for custom amount mode")
+    .option("--multi-use", "Allow multiple successful uses")
+    .option("--max-uses <count>", "Maximum successful uses for multi-use paylink")
+    .option("--title <text>", "Display title metadata")
+    .option("--description <text>", "Display description metadata")
+    .option("--order-id <id>", "Order identifier metadata")
+    .option("--customer-ref <ref>", "Customer reference metadata")
+    .option("--campaign <name>", "Campaign metadata")
+    .action(
+      async (
+        amountSats: string | undefined,
+        options?: {
+          minSats?: string;
+          maxSats?: string;
+          multiUse?: boolean;
+          maxUses?: string;
+          title?: string;
+          description?: string;
+          orderId?: string;
+          customerRef?: string;
+          campaign?: string;
+        },
+      ) => {
       const config = await loadWalletConfig();
       const { apiKey } = resolveApiKey({
         envKey: process.env.ZBD_API_KEY,
@@ -259,16 +282,74 @@ export function registerCommandGroups(program: Command): void {
         allowConfigFallback: true,
       });
 
-      const amount = parseAmountSats(amountSats);
-      const result = await createPaylink(apiKey, { amount_sats: amount });
-      writeJson({
+      const amount = typeof amountSats === "string" && amountSats.trim().length > 0 ? parseAmountSats(amountSats) : undefined;
+      const minSats =
+        typeof options?.minSats === "string" && options.minSats.trim().length > 0
+          ? parseAmountSats(options.minSats)
+          : undefined;
+      const maxSats =
+        typeof options?.maxSats === "string" && options.maxSats.trim().length > 0
+          ? parseAmountSats(options.maxSats)
+          : undefined;
+      const maxUses =
+        typeof options?.maxUses === "string" && options.maxUses.trim().length > 0
+          ? parseAmountSats(options.maxUses)
+          : undefined;
+
+      if (amount === undefined && minSats === undefined && maxSats === undefined) {
+        throw new CliError(
+          "invalid_amount",
+          "Provide amount_sats for fixed mode, or --min-sats/--max-sats for custom amount mode",
+        );
+      }
+
+      const metadata = {
+        title: options?.title?.trim() || undefined,
+        description: options?.description?.trim() || undefined,
+        order_id: options?.orderId?.trim() || undefined,
+        customer_ref: options?.customerRef?.trim() || undefined,
+        campaign: options?.campaign?.trim() || undefined,
+      };
+
+      const result = await createPaylink(apiKey, {
+        amount_sats: amount,
+        min_amount_sats: minSats,
+        max_amount_sats: maxSats,
+        multi_use: options?.multiUse === true,
+        max_uses: options?.multiUse === true ? (maxUses ?? null) : undefined,
+        metadata,
+      });
+      const createOutput: Record<string, unknown> = {
         id: result.id,
         url: result.url,
         status: result.status,
         lifecycle: result.lifecycle,
         amount_sats: result.amount_sats,
-      });
-    });
+      };
+      if (result.amount_mode === "range") {
+        createOutput.amount_mode = "range";
+      }
+      if (result.min_amount_sats !== null && result.min_amount_sats !== undefined) {
+        createOutput.min_amount_sats = result.min_amount_sats;
+      }
+      if (result.max_amount_sats !== null && result.max_amount_sats !== undefined) {
+        createOutput.max_amount_sats = result.max_amount_sats;
+      }
+      if (result.multi_use === true) {
+        createOutput.multi_use = true;
+      }
+      if (result.max_uses !== undefined) {
+        createOutput.max_uses = result.max_uses;
+      }
+      if (result.use_count !== null && result.use_count !== undefined) {
+        createOutput.use_count = result.use_count;
+      }
+      if (result.metadata && Object.keys(result.metadata).length > 0) {
+        createOutput.metadata = result.metadata;
+      }
+      writeJson(createOutput);
+      },
+    );
 
   paylink
     .command("get")
@@ -284,7 +365,7 @@ export function registerCommandGroups(program: Command): void {
 
       const result = await fetchPaylink(apiKey, id);
       await syncPaylinkSettlementProjection(apiKey, result);
-      writeJson({
+      const getOutput: Record<string, unknown> = {
         id: result.id,
         url: result.url,
         status: result.status,
@@ -292,7 +373,29 @@ export function registerCommandGroups(program: Command): void {
         amount_sats: result.amount_sats,
         created_at: result.created_at,
         updated_at: result.updated_at,
-      });
+      };
+      if (result.amount_mode === "range") {
+        getOutput.amount_mode = "range";
+      }
+      if (result.min_amount_sats !== null && result.min_amount_sats !== undefined) {
+        getOutput.min_amount_sats = result.min_amount_sats;
+      }
+      if (result.max_amount_sats !== null && result.max_amount_sats !== undefined) {
+        getOutput.max_amount_sats = result.max_amount_sats;
+      }
+      if (result.multi_use === true) {
+        getOutput.multi_use = true;
+      }
+      if (result.max_uses !== undefined) {
+        getOutput.max_uses = result.max_uses;
+      }
+      if (result.use_count !== null && result.use_count !== undefined) {
+        getOutput.use_count = result.use_count;
+      }
+      if (result.metadata && Object.keys(result.metadata).length > 0) {
+        getOutput.metadata = result.metadata;
+      }
+      writeJson(getOutput);
     });
 
   paylink
@@ -308,7 +411,8 @@ export function registerCommandGroups(program: Command): void {
 
       const records = await listPaylinks(apiKey);
       writeJson({
-        paylinks: records.map((result) => ({
+        paylinks: records.map((result) => {
+          const record: Record<string, unknown> = {
           id: result.id,
           url: result.url,
           status: result.status,
@@ -316,7 +420,30 @@ export function registerCommandGroups(program: Command): void {
           amount_sats: result.amount_sats,
           created_at: result.created_at,
           updated_at: result.updated_at,
-        })),
+          };
+          if (result.amount_mode === "range") {
+            record.amount_mode = "range";
+          }
+          if (result.min_amount_sats !== null && result.min_amount_sats !== undefined) {
+            record.min_amount_sats = result.min_amount_sats;
+          }
+          if (result.max_amount_sats !== null && result.max_amount_sats !== undefined) {
+            record.max_amount_sats = result.max_amount_sats;
+          }
+          if (result.multi_use === true) {
+            record.multi_use = true;
+          }
+          if (result.max_uses !== undefined) {
+            record.max_uses = result.max_uses;
+          }
+          if (result.use_count !== null && result.use_count !== undefined) {
+            record.use_count = result.use_count;
+          }
+          if (result.metadata && Object.keys(result.metadata).length > 0) {
+            record.metadata = result.metadata;
+          }
+          return record;
+        }),
       });
     });
 

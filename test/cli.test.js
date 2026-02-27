@@ -930,6 +930,96 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
   });
 });
 
+test("paylink create forwards range/multi-use/metadata params", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/paylinks") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.min_amount_sats, 5);
+        assert.equal(payload.max_amount_sats, 500);
+        assert.equal(payload.multi_use, true);
+        assert.equal(payload.max_uses, 4);
+        assert.equal(payload.metadata.title, "Tip jar");
+        assert.equal(payload.metadata.campaign, "spring");
+
+        response.statusCode = 201;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "pl_range_001",
+            url: "https://zbd.ai/paylinks/pl_range_001",
+            status: "created",
+            lifecycle: "created",
+            amount_mode: "range",
+            amount_sats: 5,
+            min_amount_sats: 5,
+            max_amount_sats: 500,
+            multi_use: true,
+            max_uses: 4,
+            use_count: 0,
+            metadata: {
+              title: "Tip jar",
+              campaign: "spring",
+            },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const created = await runCli(
+        [
+          "paylink",
+          "create",
+          "--min-sats",
+          "5",
+          "--max-sats",
+          "500",
+          "--multi-use",
+          "--max-uses",
+          "4",
+          "--title",
+          "Tip jar",
+          "--campaign",
+          "spring",
+        ],
+        {
+          ZBD_WALLET_CONFIG: configPath,
+          ZBD_WALLET_PAYMENTS: paymentsPath,
+          ZBD_AI_BASE_URL: server.baseUrl,
+        },
+      );
+
+      assert.equal(created.status, 0);
+      assert.deepEqual(JSON.parse(created.stdout), {
+        id: "pl_range_001",
+        url: "https://zbd.ai/paylinks/pl_range_001",
+        status: "created",
+        lifecycle: "created",
+        amount_sats: 5,
+        amount_mode: "range",
+        min_amount_sats: 5,
+        max_amount_sats: 500,
+        multi_use: true,
+        max_uses: 4,
+        use_count: 0,
+        metadata: {
+          title: "Tip jar",
+          campaign: "spring",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 test("paylink error maps API envelope to CliError deterministically", async () => {
   await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
