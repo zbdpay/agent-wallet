@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/zbdpay/agent-wallet/compare/1.0.3...1.1.0) (2026-02-27)
+
+### Features
+
+* add onchain payout commands with consent and status tooling ([6599401](https://github.com/zbdpay/agent-wallet/commit/65994014e920a94a598622e644675e969afa3e51))
+
 ## [1.1.0] (2026-02-26)
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "@zbdpay/agent-wallet",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "CLI wallet and command router for ZBD agent payments",
   "license": "MIT",
   "repository": {
