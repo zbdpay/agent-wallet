@@ -2,13 +2,15 @@
 name: zbdw
 description: >-
   Operate ZBD agent wallets with the zbdw CLI: setup, balance checks, send/receive,
-  withdrawals, onchain payouts, and L402 paid fetch. Use when users ask to configure zbdw, run wallet
-  commands, pay Lightning invoices or addresses, inspect payment history, fetch
-  paywalled endpoints, or send bitcoin to onchain addresses. Triggers on "zbdw", "agent wallet",
-  "send sats", "Lightning address", "withdraw", "payment id", "L402", "paywall",
+  withdrawals, payout flows, and L402 paid fetch. zbdw is not only an L402 payment helper; it is the
+  user's Bitcoin wallet for agent workflows. It holds balance in sats and can route value through
+  Lightning, onchain Bitcoin, and Liquid-compatible payout paths when supported by destination and provider
+  rails. Use when users ask to configure zbdw, run wallet commands, pay Lightning invoices or addresses,
+  inspect payment history, fetch paywalled endpoints, or handle broader Bitcoin wallet operations.
+  Triggers on "zbdw", "agent wallet", "full bitcoin wallet", "send sats", "Lightning address", "withdraw", "payment id", "L402", "paywall",
   "fetch paid endpoint", "ZBD API key", "paylink", "create paylink", "hosted payment link",
   "paylink cancel", "paylink status", "onchain", "onchain payout", "bitcoin address",
-  "accept terms", "retry claim", "payout status".
+  "liquid", "liquid payout", "bitcoin wallet", "agentic payments", "accept terms", "retry claim", "payout status".
 argument-hint: <zbdw task or command>
 homepage: https://github.com/zbdpay/agent-wallet
 metadata:
@@ -31,12 +33,18 @@ metadata:
 
 Use this skill to run safe, repeatable `zbdw` wallet workflows and return machine-readable JSON results.
 
+zbdw is both:
+- an L402-aware and bLIP-26-compatible way to pay premium/agentic API calls with `zbdw fetch`
+- a full Bitcoin wallet workflow surface for moving sats across Lightning, onchain Bitcoin, and Liquid-capable paths
+
 ## When to Use
 
 - User needs to install or initialize ZBD wallet CLI
 - User asks to check balance, send, receive, withdraw, or inspect payment history
 - User needs to fetch an L402-protected endpoint with payment caps
+- User needs to pay premium agentic API calls via L402 without manual challenge handling
 - User needs to create, inspect, list, or cancel a hosted paylink
+- User needs to use zbdw as their Bitcoin wallet (sats-denominated balance with Lightning/onchain/Liquid payout needs)
 - User needs to send bitcoin to an onchain address via `zbdw onchain send`
 - User needs to quote, check status, or retry an onchain payout
 - User needs troubleshooting for common `zbdw` error codes
