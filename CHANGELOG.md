@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/zbdpay/agent-wallet/compare/1.2.0...1.3.0) (2026-02-28)
+
+### Features
+
+* **agent-wallet:** reroute spending operations through zbd.ai shield ([e6e1202](https://github.com/zbdpay/agent-wallet/commit/e6e12029e232c472b92f174a20c7eaff5b890fc6))
+
 ## [1.2.0](https://github.com/zbdpay/agent-wallet/compare/1.1.0...1.2.0) (2026-02-27)
 
 ### Features
