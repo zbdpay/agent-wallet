@@ -574,21 +574,25 @@ test("send auto-detects destination format and routes to expected endpoints", as
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
       const lnAddress = await runCli(["send", "agent@example.com", "11"], {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
       const gamertag = await runCli(["send", "@agent", "12"], {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
       const lnurl = await runCli(["send", "lnurl1dp68gurn8ghj7", "13"], {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(bolt.status, 0);
@@ -599,24 +603,29 @@ test("send auto-detects destination format and routes to expected endpoints", as
       assert.deepEqual(
         seen.map((item) => item.url),
         [
-          "/v0/payments",
-          "/v0/ln-address/send-payment",
-          "/v0/gamertag/send-payment",
-          "/v0/ln-address/send-payment",
+          "/api/shield/send",
+          "/api/shield/send",
+          "/api/shield/send",
+          "/api/shield/send",
         ],
       );
 
-      assert.equal(seen[0].payload.invoice, "lnbc1exampleinvoice");
-      assert.equal(seen[0].payload.amount, undefined);
-      assert.equal(seen[1].payload.lnAddress, "agent@example.com");
-      assert.equal(seen[1].payload.amount, "11000");
-      assert.equal(seen[1].payload.comment, "Sent via zbdw");
-      assert.equal(seen[2].payload.gamertag, "agent");
-      assert.equal(seen[2].payload.amount, "12000");
-      assert.equal(seen[2].payload.description, "Sent via zbdw");
-      assert.equal(seen[3].payload.lnAddress, "lnurl1dp68gurn8ghj7");
-      assert.equal(seen[3].payload.amount, "13000");
-      assert.equal(seen[3].payload.comment, "Sent via zbdw");
+      assert.equal(seen[0].payload.destination, "lnbc1exampleinvoice");
+      assert.equal(seen[0].payload.amount_sats, 10);
+      assert.equal(seen[0].payload.kind, "bolt11");
+      assert.equal(typeof seen[0].payload.idempotency_key, "string");
+      assert.equal(seen[1].payload.destination, "agent@example.com");
+      assert.equal(seen[1].payload.amount_sats, 11);
+      assert.equal(seen[1].payload.kind, "ln_address");
+      assert.equal(typeof seen[1].payload.idempotency_key, "string");
+      assert.equal(seen[2].payload.destination, "@agent");
+      assert.equal(seen[2].payload.amount_sats, 12);
+      assert.equal(seen[2].payload.kind, "gamertag");
+      assert.equal(typeof seen[2].payload.idempotency_key, "string");
+      assert.equal(seen[3].payload.destination, "lnurl1dp68gurn8ghj7");
+      assert.equal(seen[3].payload.amount_sats, 13);
+      assert.equal(seen[3].payload.kind, "lnurl");
+      assert.equal(typeof seen[3].payload.idempotency_key, "string");
     } finally {
       await server.close();
     }
@@ -1365,10 +1374,11 @@ test("withdraw create and status return contract-shaped JSON", async () => {
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
 
     const server = await startMockServer(async (request, response) => {
-      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+      if (request.method === "POST" && request.url === "/api/shield/withdraw") {
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.amount, "300000");
+        assert.equal(payload.amount_sats, 300);
         assert.equal(payload.description, "Withdrawal request");
+        assert.equal(typeof payload.idempotency_key, "string");
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
         response.end(
@@ -1405,6 +1415,7 @@ test("withdraw create and status return contract-shaped JSON", async () => {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(createResult.status, 0);
@@ -1436,10 +1447,11 @@ test("withdraw shorthand amount maps to create", async () => {
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
 
     const server = await startMockServer(async (request, response) => {
-      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+      if (request.method === "POST" && request.url === "/api/shield/withdraw") {
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.amount, "300000");
+        assert.equal(payload.amount_sats, 300);
         assert.equal(payload.description, "Withdrawal request");
+        assert.equal(typeof payload.idempotency_key, "string");
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
         response.end(
@@ -1463,6 +1475,7 @@ test("withdraw shorthand amount maps to create", async () => {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -1522,10 +1535,11 @@ test("withdraw create parses nested invoice uri and strips lightning prefix", as
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
 
     const server = await startMockServer(async (request, response) => {
-      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+      if (request.method === "POST" && request.url === "/api/shield/withdraw") {
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.amount, "50000000");
+        assert.equal(payload.amount_sats, 50000);
         assert.equal(payload.description, "Withdrawal request");
+        assert.equal(typeof payload.idempotency_key, "string");
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
         response.end(
@@ -1552,6 +1566,7 @@ test("withdraw create parses nested invoice uri and strips lightning prefix", as
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -1585,11 +1600,13 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
     let paymentCalls = 0;
 
     const server = await startMockServer(async (request, response) => {
-      if (request.method === "POST" && request.url === "/v0/payments") {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
         paymentCalls += 1;
         const payload = JSON.parse(await readRequestBody(request));
-        assert.equal(payload.invoice, "lnbc21n1challengeinvoice");
-        assert.equal(payload.amount, undefined);
+        assert.equal(payload.destination, "lnbc21n1challengeinvoice");
+        assert.equal(payload.amount_sats, 21);
+        assert.equal(payload.kind, "bolt11");
+        assert.equal(typeof payload.idempotency_key, "string");
 
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
@@ -1641,6 +1658,7 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(first.status, 0);
@@ -1661,6 +1679,7 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(second.status, 0);
@@ -1736,7 +1755,7 @@ test("fetch surfaces self-pay guard from payment API", async () => {
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
 
     const server = await startMockServer(async (request, response) => {
-      if (request.method === "POST" && request.url === "/v0/payments") {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
         response.statusCode = 400;
         response.setHeader("content-type", "application/json");
         response.end(
@@ -1775,13 +1794,14 @@ test("fetch surfaces self-pay guard from payment API", async () => {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
       const body = JSON.parse(result.stdout);
-      assert.equal(body.error, "wallet_request_failed");
+      assert.equal(body.error, "shield_request_failed");
       assert.equal(body.details.status, 400);
-      assert.equal(body.details.path, "/v0/payments");
+      assert.equal(body.details.path, "/api/shield/send");
       assert.equal(body.details.response.errorCode, "WPAYS0011");
       assert.match(body.details.response.message, /Pay your own Charge/);
     } finally {
@@ -1814,13 +1834,14 @@ test("onchain payout client methods parse deterministic nested data envelopes", 
       return;
     }
 
-    if (request.method === "POST" && request.url === "/api/payouts") {
+    if (request.method === "POST" && request.url === "/api/shield/payout") {
       assert.equal(request.headers.apikey, "config-key-123");
       const payload = JSON.parse(await readRequestBody(request));
       assert.equal(payload.amount_sats, 210);
       assert.equal(payload.destination, "bc1qquotedestination");
       assert.equal(payload.accept_terms, true);
       assert.equal(payload.payout_id, "payout_001");
+      assert.equal(typeof payload.idempotency_key, "string");
       response.statusCode = 201;
       response.setHeader("content-type", "application/json");
       response.end(
@@ -1960,7 +1981,7 @@ test("onchain payout client methods parse deterministic nested data envelopes", 
 
 test("onchain payout client maps API validation failures to deterministic CliError details", async () => {
   const server = await startMockServer(async (request, response) => {
-    if (request.method === "POST" && request.url === "/api/payouts") {
+    if (request.method === "POST" && request.url === "/api/shield/payout") {
       response.statusCode = 400;
       response.setHeader("content-type", "application/json");
       response.end(
@@ -1995,7 +2016,7 @@ test("onchain payout client maps API validation failures to deterministic CliErr
         assert.equal(error && typeof error === "object" && "details" in error ? error.details.status : null, 400);
         assert.equal(
           error && typeof error === "object" && "details" in error ? error.details.path : null,
-          "/api/payouts",
+          "/api/shield/payout",
         );
         assert.equal(
           error && typeof error === "object" && "details" in error ? error.details.response.error : null,
@@ -2041,12 +2062,13 @@ test("onchain quote/send/status/retry-claim commands return deterministic JSON a
         return;
       }
 
-      if (request.method === "POST" && request.url === "/api/payouts") {
+      if (request.method === "POST" && request.url === "/api/shield/payout") {
         const payload = JSON.parse(await readRequestBody(request));
         assert.equal(payload.amount_sats, 210);
         assert.equal(payload.destination, "bc1qquotedestination");
         assert.equal(payload.accept_terms, true);
         assert.equal(payload.payout_id, "payout_cli_001");
+        assert.equal(typeof payload.idempotency_key, "string");
 
         response.statusCode = 201;
         response.setHeader("content-type", "application/json");
@@ -2350,6 +2372,191 @@ test("onchain send requires --accept-terms and does not call outbound API withou
       assert.equal(body.error, "accept_terms_required");
       assert.equal(body.message, "Onchain send requires --accept-terms to confirm consent");
       assert.equal(requestCount, 0);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send degrades to direct ZBD API when shield is unreachable", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const seen = [];
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/gamertag/send-payment") {
+        const payload = JSON.parse(await readRequestBody(request));
+        seen.push(payload);
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "pay_fallback_001",
+            status: "completed",
+            fee: 1000,
+            preimage: "pre_fallback_001",
+            createdAt: "2026-02-28T00:00:00.000Z",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "@fallback-user", "55"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+      });
+
+      assert.equal(result.status, 0);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.payment_id, "pay_fallback_001");
+      assert.equal(body.fee_sats, 1);
+      assert.equal(body.status, "completed");
+      assert.equal(body.preimage, "pre_fallback_001");
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0].gamertag, "fallback-user");
+      assert.equal(seen[0].amount, "55000");
+
+      const payments = JSON.parse(await readFile(paymentsPath, "utf8"));
+      const fallbackPayment = payments.find((entry) => entry.id === "pay_fallback_001");
+      assert.ok(fallbackPayment);
+      assert.equal(fallbackPayment.amount_sats, 55);
+      assert.equal(fallbackPayment.fee_sats, 1);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw degrades to direct ZBD API when shield is unreachable", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.amount, "33000");
+        assert.equal(payload.description, "Withdrawal request");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "wr_fallback_001",
+            invoice: { request: "lnurl1fallbackwithdraw" },
+            status: "pending",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "create", "33"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_fallback_001",
+        lnurl: "lnurl1fallbackwithdraw",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send maps shield allowance_exceeded envelope to deterministic CLI error", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        response.statusCode = 403;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            error: "allowance_exceeded",
+            reason: "budget_exhausted",
+            approval_required: true,
+            approval_id: "approval_123",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "lnbc1allowanceblock", "21"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "allowance_exceeded");
+      assert.equal(body.message, "budget_exhausted");
+      assert.equal(body.details.approval_required, true);
+      assert.equal(body.details.approval_id, "approval_123");
+      assert.equal(body.details.path, "/api/shield/send");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send maps shield pending approval envelope to deterministic CLI error", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        response.statusCode = 202;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            approval_id: "approval_999",
+            status: "pending_approval",
+            message: "Spend request requires approval before execution",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "lnbc1pendingapproval", "13"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "pending_approval");
+      assert.match(body.message, /requires approval/i);
+      assert.equal(body.details.approval_id, "approval_999");
+      assert.equal(body.details.status, "pending_approval");
+      assert.equal(body.details.path, "/api/shield/send");
     } finally {
       await server.close();
     }

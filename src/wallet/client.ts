@@ -1,4 +1,5 @@
 import { CliError } from "../output/json.js";
+import { randomUUID } from "node:crypto";
 
 const DEFAULT_ZBD_API_BASE_URL = "https://api.zbdpay.com";
 const DEFAULT_ZBD_AI_BASE_URL = "https://zbd.ai";
@@ -381,10 +382,28 @@ export async function sendPayment(
     };
   }
 
-  const body = await requestZbd(apiKey, path, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let body: unknown;
+  try {
+    body = await requestShield(apiKey, "/api/shield/send", {
+      method: "POST",
+      body: JSON.stringify({
+        destination,
+        amount_sats: amountSats,
+        kind,
+        idempotency_key: generateIdempotencyKey(),
+      }),
+    });
+  } catch (error) {
+    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+      throw error;
+    }
+
+    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+    body = await requestZbd(apiKey, path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
 
   const paymentId = pickString(body, ["id"], ["payment_id"], ["paymentId"], ["data", "id"], ["data", "payment_id"]);
   if (!paymentId) {
@@ -439,10 +458,27 @@ export async function fetchPaymentDetail(apiKey: string, id: string): Promise<Pa
 
 export async function createWithdrawRequest(apiKey: string, amountSats: number): Promise<WithdrawCreateResult> {
   const amountMsats = String(amountSats * 1000);
-  const body = await requestZbd(apiKey, "/v0/withdrawal-requests", {
-    method: "POST",
-    body: JSON.stringify({ amount: amountMsats, description: "Withdrawal request" }),
-  });
+  let body: unknown;
+  try {
+    body = await requestShield(apiKey, "/api/shield/withdraw", {
+      method: "POST",
+      body: JSON.stringify({
+        amount_sats: amountSats,
+        description: "Withdrawal request",
+        idempotency_key: generateIdempotencyKey(),
+      }),
+    });
+  } catch (error) {
+    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+      throw error;
+    }
+
+    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+    body = await requestZbd(apiKey, "/v0/withdrawal-requests", {
+      method: "POST",
+      body: JSON.stringify({ amount: amountMsats, description: "Withdrawal request" }),
+    });
+  }
 
   const withdrawId = pickString(
     body,
@@ -608,10 +644,26 @@ export async function createOnchainPayout(
   apiKey: string,
   payload: { amount_sats: number; destination: string; accept_terms: boolean; payout_id?: string },
 ): Promise<OnchainPayoutCreateResult> {
-  const body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let body: unknown;
+  try {
+    body = await requestShield(apiKey, "/api/shield/payout", {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        idempotency_key: generateIdempotencyKey(),
+      }),
+    });
+  } catch (error) {
+    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+      throw error;
+    }
+
+    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+    body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
 
   const source = getOnchainPayoutSource(body);
   const payoutId = pickString(source, ["payout_id"], ["payoutId"]);
@@ -812,6 +864,88 @@ async function requestZbd(apiKey: string, path: string, init: { method: string; 
         status: response.status,
         response: body,
         path,
+      },
+    );
+  }
+
+  return body;
+}
+
+async function requestShield(
+  apiKey: string,
+  shieldPath: string,
+  init: { method: string; body?: string },
+): Promise<unknown> {
+  const shieldBaseUrl = getZbdAiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${shieldBaseUrl}${shieldPath}`, {
+      method: init.method,
+      headers: {
+        apikey: apiKey,
+        "x-api-key": apiKey,
+        "content-type": "application/json",
+      },
+      body: init.body,
+    });
+  } catch {
+    throw new CliError("shield_unreachable", `Failed to reach shield API at ${shieldBaseUrl}`, {
+      path: shieldPath,
+    });
+  }
+
+  const body = await safeJson(response);
+  if (response.status === 202) {
+    throw new CliError(
+      "pending_approval",
+      pickString(body, ["message"]) ?? "Waiting for approval",
+      {
+        approval_id: pickString(body, ["approval_id"], ["approvalId"]),
+        status: pickString(body, ["status"]),
+        response: body,
+        path: shieldPath,
+      },
+    );
+  }
+
+  if (response.status === 403) {
+    throw new CliError(
+      "allowance_exceeded",
+      pickString(body, ["reason"], ["message"], ["errorString"]) ?? "Allowance exceeded",
+      {
+        approval_required: getAtPath(body, ["approval_required"]) === true,
+        approval_id: pickString(body, ["approval_id"], ["approvalId"]),
+        response: body,
+        path: shieldPath,
+      },
+    );
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new CliError("invalid_api_key", "API key rejected by shield API");
+    }
+
+    throw new CliError(
+      pickString(body, ["error"]) ?? "shield_request_failed",
+      pickString(body, ["message"], ["errorString"]) ?? "Shield API request failed",
+      {
+        status: response.status,
+        response: body,
+        path: shieldPath,
+      },
+    );
+  }
+
+  const success = getAtPath(body, ["success"]);
+  if (success === false) {
+    throw new CliError(
+      pickString(body, ["error"]) ?? "shield_request_failed",
+      pickString(body, ["message"], ["errorString"]) ?? "Shield API request failed",
+      {
+        status: response.status,
+        response: body,
+        path: shieldPath,
       },
     );
   }
@@ -1144,4 +1278,8 @@ function getZbdApiBaseUrl(): string {
 
 function getZbdAiBaseUrl(): string {
   return process.env.ZBD_AI_BASE_URL ?? DEFAULT_ZBD_AI_BASE_URL;
+}
+
+function generateIdempotencyKey(): string {
+  return `zbdw-${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
