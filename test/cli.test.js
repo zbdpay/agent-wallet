@@ -2377,3 +2377,188 @@ test("onchain send requires --accept-terms and does not call outbound API withou
     }
   });
 });
+
+test("send degrades to direct ZBD API when shield is unreachable", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const seen = [];
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/gamertag/send-payment") {
+        const payload = JSON.parse(await readRequestBody(request));
+        seen.push(payload);
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "pay_fallback_001",
+            status: "completed",
+            fee: 1000,
+            preimage: "pre_fallback_001",
+            createdAt: "2026-02-28T00:00:00.000Z",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "@fallback-user", "55"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+      });
+
+      assert.equal(result.status, 0);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.payment_id, "pay_fallback_001");
+      assert.equal(body.fee_sats, 1);
+      assert.equal(body.status, "completed");
+      assert.equal(body.preimage, "pre_fallback_001");
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0].gamertag, "fallback-user");
+      assert.equal(seen[0].amount, "55000");
+
+      const payments = JSON.parse(await readFile(paymentsPath, "utf8"));
+      const fallbackPayment = payments.find((entry) => entry.id === "pay_fallback_001");
+      assert.ok(fallbackPayment);
+      assert.equal(fallbackPayment.amount_sats, 55);
+      assert.equal(fallbackPayment.fee_sats, 1);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw degrades to direct ZBD API when shield is unreachable", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.amount, "33000");
+        assert.equal(payload.description, "Withdrawal request");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "wr_fallback_001",
+            invoice: { request: "lnurl1fallbackwithdraw" },
+            status: "pending",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "create", "33"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_fallback_001",
+        lnurl: "lnurl1fallbackwithdraw",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send maps shield allowance_exceeded envelope to deterministic CLI error", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        response.statusCode = 403;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            error: "allowance_exceeded",
+            reason: "budget_exhausted",
+            approval_required: true,
+            approval_id: "approval_123",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "lnbc1allowanceblock", "21"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "allowance_exceeded");
+      assert.equal(body.message, "budget_exhausted");
+      assert.equal(body.details.approval_required, true);
+      assert.equal(body.details.approval_id, "approval_123");
+      assert.equal(body.details.path, "/api/shield/send");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send maps shield pending approval envelope to deterministic CLI error", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        response.statusCode = 202;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            approval_id: "approval_999",
+            status: "pending_approval",
+            message: "Spend request requires approval before execution",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "lnbc1pendingapproval", "13"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "pending_approval");
+      assert.match(body.message, /requires approval/i);
+      assert.equal(body.details.approval_id, "approval_999");
+      assert.equal(body.details.status, "pending_approval");
+      assert.equal(body.details.path, "/api/shield/send");
+    } finally {
+      await server.close();
+    }
+  });
+});
