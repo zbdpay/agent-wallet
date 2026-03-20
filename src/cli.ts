@@ -10,8 +10,8 @@ function createProgram(): Command {
   const program = new Command();
 
   program
-    .name("zbdw")
-    .description("ZBD agent wallet CLI")
+    .name("axo")
+    .description("Axo agent wallet CLI")
     .showHelpAfterError(false)
     .allowExcessArguments(false)
     .configureOutput({
