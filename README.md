@@ -1,6 +1,6 @@
-# @zbdpay/agent-wallet
+# @axobot/cli
 
-`zbdw` CLI for wallet operations, registration, history, and L402-aware fetch flows.
+`axo` CLI for wallet operations, registration, history, and L402-aware fetch flows.
 
 ## Requirements
 
@@ -10,27 +10,28 @@
 ## Install
 
 ```bash
-npm install @zbdpay/agent-wallet
+npm install @axobot/cli
 ```
 
 Run without installation:
 
 ```bash
-npx @zbdpay/agent-wallet init --key <apiKey>
+npx @axobot/cli init --key <apiKey>
 ```
 
 Global install for frequent use:
 
 ```bash
-npm install -g @zbdpay/agent-wallet
-zbdw balance
+npm install -g @axobot/cli
+axo balance
+axo balance
 ```
 
 Local repo usage from `/Users/andreneves/Code/zbd/agents`:
 
 ```bash
-npm --prefix agent-wallet run build
-alias zbdw='node agent-wallet/dist/cli.js'
+npm --prefix axobot-cli run build
+alias axo='node axobot-cli/dist/cli.js'
 ```
 
 ## Environment Variables
@@ -45,31 +46,31 @@ alias zbdw='node agent-wallet/dist/cli.js'
 ## Commands
 
 ```bash
-zbdw init [--key <apiKey>]
-zbdw info
-zbdw balance
+axo init [--key <apiKey>]
+axo info
+axo balance
 
-zbdw receive <amount_sats>
-zbdw receive --static
+axo receive <amount_sats>
+axo receive --static
 
-zbdw send <destination> <amount_sats>
-zbdw payments
-zbdw payment <id>
+axo send <destination> <amount_sats>
+axo payments
+axo payment <id>
 
-zbdw paylink create <amount_sats>
-zbdw paylink get <id>
-zbdw paylink list
-zbdw paylink cancel <id>
+axo paylink create <amount_sats>
+axo paylink get <id>
+axo paylink list
+axo paylink cancel <id>
 
-zbdw withdraw create <amount_sats>
-zbdw withdraw status <withdraw_id>
+axo withdraw create <amount_sats>
+axo withdraw status <withdraw_id>
 
-zbdw onchain quote <amount_sats> <destination>
-zbdw onchain send <amount_sats> <destination> --accept-terms [--payout-id <id>]
-zbdw onchain status <payout_id>
-zbdw onchain retry-claim <payout_id>
+axo onchain quote <amount_sats> <destination>
+axo onchain send <amount_sats> <destination> --accept-terms [--payout-id <id>]
+axo onchain status <payout_id>
+axo onchain retry-claim <payout_id>
 
-zbdw fetch <url> [--method <method>] [--data <json>] [--max-sats <amount>]
+axo fetch <url> [--method <method>] [--data <json>] [--max-sats <amount>]
 ```
 
 ### Destination Types (`send`)
@@ -85,19 +86,19 @@ Paylinks are hosted payment pages at `zbd.ai/paylinks/<id>`. Share the `url` wit
 
 ```bash
 # Create a paylink for 250 sats
-zbdw paylink create 250
+axo paylink create 250
 # {"id":"pl_001","url":"https://zbd.ai/paylinks/pl_001","status":"active","lifecycle":"active","amount_sats":250}
 
 # Fetch current state (also syncs settlement to local payments.json)
-zbdw paylink get pl_001
+axo paylink get pl_001
 # {"id":"pl_001","url":"...","status":"active","lifecycle":"active","amount_sats":250,"created_at":"...","updated_at":"..."}
 
 # List all paylinks
-zbdw paylink list
+axo paylink list
 # {"paylinks":[...]}
 
 # Cancel a paylink (transitions lifecycle to dead)
-zbdw paylink cancel pl_001
+axo paylink cancel pl_001
 # {"id":"pl_001","url":"...","status":"dead","lifecycle":"dead"}
 ```
 
@@ -108,23 +109,23 @@ Terminal states (`paid`, `expired`, `dead`) are permanent. A paid link cannot be
 `paylink get` also polls the latest payment attempt and appends a settlement record to `~/.zbd-wallet/payments.json` with `paylink_id`, `paylink_lifecycle`, and `paylink_amount_sats` metadata.
 ## Onchain Payout Commands
 
-Onchain payouts send bitcoin to a native BTC address via the `zbd-ai` payout service.
+Onchain payouts send bitcoin to a native BTC address via the Axo payout service.
 
 ```bash
 # Get a fee quote before sending
-zbdw onchain quote 10000 bc1qexample...
+axo onchain quote 10000 bc1qexample...
 # {"quote_id":"q_001","amount_sats":10000,"fee_sats":150,"total_sats":10150,"destination":"bc1q...","expires_at":"..."}
 
 # Send onchain (--accept-terms is required)
-zbdw onchain send 10000 bc1qexample... --accept-terms
+axo onchain send 10000 bc1qexample... --accept-terms
 # {"payout_id":"payout_123","status":"queued","amount_sats":10000,"destination":"bc1q...","request_id":"req_abc","kickoff":{"enqueued":true,"workflow":"payout.workflow.root","kickoff_id":"k_001"}}
 
 # Check payout status
-zbdw onchain status payout_123
+axo onchain status payout_123
 # {"payout_id":"payout_123","status":"broadcasting","amount_sats":10000,"destination":"bc1q...","txid":null,"failure_code":null,"kickoff":{...}}
 
 # Retry claim after a failed_invoice_expired payout
-zbdw onchain retry-claim payout_123
+axo onchain retry-claim payout_123
 # {"payout_id":"payout_123","status":"queued","kickoff":{"enqueued":true,"workflow":"payout.workflow.root","kickoff_id":"k_002"}}
 ```
 
@@ -172,7 +173,7 @@ Examples:
 - Token cache: `~/.zbd-wallet/token-cache.json`
 ## L402 Fetch Flow
 
-`zbdw fetch` is powered by `@zbdpay/agent-fetch`.
+`axo fetch` is powered by `@axobot/fetch`.
 
 - parses `402` challenge
 - pays invoice via wallet API
@@ -183,31 +184,31 @@ Examples:
 Call twice against the same protected URL to verify cache reuse:
 
 ```bash
-zbdw fetch "https://your-protected-endpoint" --max-sats 100
-zbdw fetch "https://your-protected-endpoint" --max-sats 100
+axo fetch "https://your-protected-endpoint" --max-sats 100
+axo fetch "https://your-protected-endpoint" --max-sats 100
 ```
 
 On the second call, `payment_id` should be `null` when cached token is reused.
 
 ## Companion Examples You Can Run Now
 
-`agent-wallet` does not ship its own `examples/` folder yet, but the fastest end-to-end examples are in companion repos:
+`axobot-cli` does not ship its own `examples/` folder yet, but the fastest end-to-end examples are in companion repos:
 
-- `../agent-pay/examples/http-server.mjs` (serve a paid endpoint)
-- `../agent-fetch/examples/zbd-agent-fetch.mjs` (pay and fetch that endpoint)
+- `../axobot-pay/examples/http-server.mjs` (serve a paid endpoint)
+- `../axobot-fetch/examples/zbd-agent-fetch.mjs` (pay and fetch that endpoint)
 
 From `/Users/andreneves/Code/zbd/agents`:
 
 ```bash
-npm --prefix agent-pay run build
-ZBD_API_KEY=<your_api_key> npm --prefix agent-pay run example:http-server
+npm --prefix axobot-pay run build
+ZBD_API_KEY=<your_api_key> npm --prefix axobot-pay run example:http-server
 ```
 
 Then in another terminal:
 
 ```bash
-npm --prefix agent-wallet run build
-node agent-wallet/dist/cli.js fetch "http://localhost:8787/protected" --max-sats 100
+npm --prefix axobot-cli run build
+node axobot-cli/dist/cli.js fetch "http://localhost:8787/protected" --max-sats 100
 ```
 
 ## Scripts
@@ -222,17 +223,17 @@ npm run release:dry-run
 
 ## Troubleshooting
 
-- `zsh: command not found: zbdw`
+- `zsh: command not found: axo`
   - build first and add alias, or install package globally
 - `register_failed` during `init`
-  - ensure `ZBD_AI_BASE_URL` points to your running `zbd-ai` instance
+  - ensure `ZBD_AI_BASE_URL` points to your running `axobot` instance
   - confirm upstream `ZBD_API_BASE_URL` and API key are valid for static charge creation
 - `wallet_response_invalid` during `info`/`balance`
   - verify wallet endpoint returns a valid balance shape and that `ZBD_API_BASE_URL` is correct
 - `accept_terms_required` during `onchain send`
   - add `--accept-terms` flag to confirm consent; the flag is required and there is no interactive prompt
 - `onchain_payout_request_failed` during `onchain send/status/retry-claim`
-  - verify `ZBD_AI_BASE_URL` points to your running `zbd-ai` instance
+  - verify `ZBD_AI_BASE_URL` points to your running `axobot` instance
   - inspect `details.status` and `details.response` for upstream error context
 - `failed_invoice_expired` payout status
-  - the payout's internal invoice expired before the claim completed; run `zbdw onchain retry-claim <payout_id>` to re-enqueue
+  - the payout's internal invoice expired before the claim completed; run `axo onchain retry-claim <payout_id>` to re-enqueue
