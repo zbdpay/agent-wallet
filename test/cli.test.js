@@ -1,57 +1,103 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import {
   quoteOnchainPayout,
   createOnchainPayout,
   fetchOnchainPayout,
   retryOnchainClaim,
 } from "../dist/wallet/client.js";
+import { run } from "../dist/cli.js";
 
 const CLI_PATH = new URL("../dist/cli.js", import.meta.url);
 
 function runCliFromPath(cliPath, args, env = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, ...args], {
-      env: {
-        ...process.env,
-        ...env,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  const result = spawnSync(process.execPath, [cliPath, ...args], {
+    env: {
+      ...process.env,
+      ...env,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
 
-    const stdoutChunks = [];
-    const stderrChunks = [];
+  if (result.error) {
+    return Promise.reject(result.error);
+  }
 
-    child.stdout.on("data", (chunk) => {
-      stdoutChunks.push(chunk);
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderrChunks.push(chunk);
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (code, signal) => {
-      resolve({
-        status: typeof code === "number" ? code : 1,
-        signal,
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-      });
-    });
+  return Promise.resolve({
+    status: typeof result.status === "number" ? result.status : 1,
+    signal: result.signal,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
   });
 }
 
 function runCli(args, env = {}) {
-  return runCliFromPath(CLI_PATH.pathname, args, env);
+  return new Promise(async (resolve, reject) => {
+    const previousEnv = new Map();
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    const previousExitCode = process.exitCode;
+
+    try {
+      for (const [key, value] of Object.entries(env)) {
+        previousEnv.set(key, process.env[key]);
+        process.env[key] = value;
+      }
+
+      process.stdout.write = ((chunk, encoding, callback) => {
+        const normalized =
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString(typeof encoding === "string" ? encoding : "utf8");
+        stdoutChunks.push(normalized);
+        if (typeof encoding === "function") {
+          encoding();
+        } else if (typeof callback === "function") {
+          callback();
+        }
+        return true;
+      });
+
+      process.stderr.write = ((chunk, encoding, callback) => {
+        const normalized =
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString(typeof encoding === "string" ? encoding : "utf8");
+        stderrChunks.push(normalized);
+        if (typeof encoding === "function") {
+          encoding();
+        } else if (typeof callback === "function") {
+          callback();
+        }
+        return true;
+      });
+
+      const status = await run(["node", CLI_PATH.pathname, ...args]);
+      resolve({
+        status,
+        signal: null,
+        stdout: stdoutChunks.join(""),
+        stderr: stderrChunks.join(""),
+      });
+    } catch (error) {
+      reject(error);
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+      process.exitCode = previousExitCode;
+      for (const [key, value] of previousEnv.entries()) {
+        if (typeof value === "string") {
+          process.env[key] = value;
+        } else {
+          delete process.env[key];
+        }
+      }
+    }
+  });
 }
 
 async function withTempConfigPath(callback) {
@@ -77,31 +123,58 @@ async function withTempWalletPaths(callback) {
 }
 
 async function startMockServer(handler) {
-  const server = createServer(handler);
-  await new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      resolve();
-    });
-  });
+  const previousFetch = globalThis.fetch;
+  const baseUrl = `https://mock-${Math.random().toString(16).slice(2)}.axo.test`;
 
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("failed to start mock server");
-  }
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+
+    if (!request.url.startsWith(baseUrl)) {
+      return previousFetch(input, init);
+    }
+
+    const bodyText = init?.body ? String(init.body) : "";
+    const nodeRequest = Readable.from(
+      bodyText.length > 0 ? [Buffer.from(bodyText, "utf8")] : [],
+    );
+    nodeRequest.method = request.method;
+    nodeRequest.url = `${url.pathname}${url.search}`;
+    nodeRequest.headers = Object.fromEntries(request.headers.entries());
+
+    const responseState = {
+      statusCode: 200,
+      headers: new Map(),
+      chunks: [],
+      ended: false,
+    };
+
+    const nodeResponse = {
+      statusCode: 200,
+      setHeader(name, value) {
+        responseState.headers.set(String(name).toLowerCase(), String(value));
+      },
+      end(chunk = "") {
+        if (chunk) {
+          responseState.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+        }
+        responseState.statusCode = this.statusCode;
+        responseState.ended = true;
+      },
+    };
+
+    await handler(nodeRequest, nodeResponse);
+
+    return new Response(Buffer.concat(responseState.chunks), {
+      status: responseState.statusCode,
+      headers: Object.fromEntries(responseState.headers.entries()),
+    });
+  };
 
   return {
-    baseUrl: `http://127.0.0.1:${address.port}`,
+    baseUrl,
     async close() {
-      await new Promise((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve();
-        });
-      });
+      globalThis.fetch = previousFetch;
     },
   };
 }
@@ -133,8 +206,8 @@ test("help output lists planned command groups", async () => {
 });
 
 test("help output works when cli is invoked via symlink path", async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), "zbdw-symlink-"));
-  const symlinkPath = join(tempDir, "zbdw");
+  const tempDir = await mkdtemp(join(tmpdir(), "axo-symlink-"));
+  const symlinkPath = join(tempDir, "axo");
 
   try {
     await symlink(CLI_PATH.pathname, symlinkPath);
@@ -142,7 +215,7 @@ test("help output works when cli is invoked via symlink path", async () => {
     const result = await runCliFromPath(symlinkPath, ["--help"]);
 
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /ZBD agent wallet CLI/);
+    assert.match(result.stdout, /Axo agent wallet CLI/);
     assert.match(result.stdout, /init/);
     assert.match(result.stdout, /fetch/);
   } finally {
@@ -2372,6 +2445,181 @@ test("onchain send requires --accept-terms and does not call outbound API withou
       assert.equal(body.error, "accept_terms_required");
       assert.equal(body.message, "Onchain send requires --accept-terms to confirm consent");
       assert.equal(requestCount, 0);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send bypasses shield when ZBD_SHIELD_ENABLED=false", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    let shieldCalls = 0;
+    let directCalls = 0;
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        shieldCalls += 1;
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "unexpected_shield_call" }));
+        return;
+      }
+
+      if (request.method === "POST" && request.url === "/v0/gamertag/send-payment") {
+        directCalls += 1;
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.gamertag, "toggle-user");
+        assert.equal(payload.amount, "41000");
+        assert.equal(payload.description, "Sent via axo");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "pay_toggle_001",
+            status: "completed",
+            fee: 1000,
+            preimage: "pre_toggle_001",
+            createdAt: "2026-03-01T00:00:00.000Z",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "@toggle-user", "41"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
+        ZBD_SHIELD_ENABLED: "false",
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        payment_id: "pay_toggle_001",
+        fee_sats: 1,
+        status: "completed",
+        preimage: "pre_toggle_001",
+      });
+      assert.equal(shieldCalls, 0);
+      assert.equal(directCalls, 1);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("withdraw bypasses shield when ZBD_SHIELD_ENABLED=false", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    let shieldCalls = 0;
+    let directCalls = 0;
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/withdraw") {
+        shieldCalls += 1;
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "unexpected_shield_call" }));
+        return;
+      }
+
+      if (request.method === "POST" && request.url === "/v0/withdrawal-requests") {
+        directCalls += 1;
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.amount, "17000");
+        assert.equal(payload.description, "Withdrawal request");
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "wr_toggle_001",
+            invoice: { request: "lnurl1togglewithdraw" },
+            status: "pending",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["withdraw", "create", "17"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+        ZBD_AI_BASE_URL: server.baseUrl,
+        ZBD_SHIELD_ENABLED: "false",
+      });
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        withdraw_id: "wr_toggle_001",
+        lnurl: "lnurl1togglewithdraw",
+      });
+      assert.equal(shieldCalls, 0);
+      assert.equal(directCalls, 1);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("send retries shield transport once and reuses idempotency key", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    const seenKeys = [];
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/send") {
+        const payload = JSON.parse(await readRequestBody(request));
+        seenKeys.push(payload.idempotency_key);
+
+        if (seenKeys.length === 1) {
+          request.socket.destroy();
+          return;
+        }
+
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "pay_retry_key_001",
+            status: "completed",
+            fee: 1000,
+            preimage: "pre_retry_key_001",
+            createdAt: "2026-03-01T00:00:00.000Z",
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["send", "lnbc1retrysamekey", "23"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(seenKeys.length, 2);
+      assert.equal(typeof seenKeys[0], "string");
+      assert.equal(seenKeys[0], seenKeys[1]);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        payment_id: "pay_retry_key_001",
+        fee_sats: 1,
+        status: "completed",
+        preimage: "pre_retry_key_001",
+      });
     } finally {
       await server.close();
     }
