@@ -1,11 +1,11 @@
-# zbdw Troubleshooting
+# axo Troubleshooting
 
-Use this playbook to map `zbdw` JSON errors to concrete fixes.
+Use this playbook to map `axo` JSON errors to concrete fixes.
 
 ## Fast Triage
 
 1. Confirm runtime: Node.js `>=22`
-2. Confirm command path: `zbdw --help` or `npx @zbdpay/agent-wallet --help`
+2. Confirm command path: `axo --help` or `npx @axobot/cli --help`
 3. Confirm API key source with precedence (`--key` > `ZBD_API_KEY` > config)
 4. Re-run failing command and inspect `error`, `message`, and `details`
 
@@ -19,7 +19,7 @@ Cause:
 Fix:
 - pass `--key <apiKey>`, or
 - set `ZBD_API_KEY`, or
-- run `zbdw init --key <apiKey>` to persist config
+- run `axo init --key <apiKey>` to persist config
 
 ### `invalid_api_key`
 
@@ -195,8 +195,8 @@ Expected files:
 ### Validate L402 cache behavior
 
 ```bash
-zbdw fetch "https://api.example.com/premium" --max-sats 100
-zbdw fetch "https://api.example.com/premium" --max-sats 100
+axo fetch "https://api.example.com/premium" --max-sats 100
+axo fetch "https://api.example.com/premium" --max-sats 100
 ```
 
 Expected:
@@ -207,16 +207,16 @@ Expected:
 
 ```bash
 # create a paylink
-zbdw paylink create 250
+axo paylink create 250
 
 # inspect current state
-zbdw paylink get <id>
+axo paylink get <id>
 
 # list all paylinks
-zbdw paylink list
+axo paylink list
 
 # cancel if still active
-zbdw paylink cancel <id>
+axo paylink cancel <id>
 ```
 
 Expected lifecycle progression: `created` -> `active` -> `paid` (terminal) or `expired`/`dead` (terminal).
@@ -226,7 +226,7 @@ If `lifecycle` is already `paid`, `expired`, or `dead`, cancel will fail or be a
 ### Inspect paylink settlement in local payments
 
 ```bash
-zbdw payments | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).filter(p=>p.source==='paylink').forEach(p=>console.log(JSON.stringify(p)))"
+axo payments | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).filter(p=>p.source==='paylink').forEach(p=>console.log(JSON.stringify(p)))"
 ```
 
 Expected paylink payment record fields:
@@ -255,7 +255,7 @@ Error envelope shape:
 ### `accept_terms_required`
 
 Cause:
-- `zbdw onchain send` was called without the `--accept-terms` flag
+- `axo onchain send` was called without the `--accept-terms` flag
 
 Fix:
 - add `--accept-terms` to the command; this is a local preflight check and no network call is made when it fails
@@ -306,7 +306,7 @@ Cause:
 - the payout's internal invoice expired before the claim workflow completed
 
 Fix:
-- run `zbdw onchain retry-claim <payout_id>` to re-enqueue the claim workflow
+- run `axo onchain retry-claim <payout_id>` to re-enqueue the claim workflow
 - `retry-claim` is only valid for `failed_invoice_expired`; other terminal statuses cannot be retried
 
 ### Payout in terminal status other than `succeeded`
@@ -324,16 +324,16 @@ Fix:
 
 ```bash
 # get a fee quote first
-zbdw onchain quote 10000 bc1qexample...
+axo onchain quote 10000 bc1qexample...
 
 # send with explicit consent
-zbdw onchain send 10000 bc1qexample... --accept-terms
+axo onchain send 10000 bc1qexample... --accept-terms
 
 # poll status
-zbdw onchain status <payout_id>
+axo onchain status <payout_id>
 
 # retry if failed_invoice_expired
-zbdw onchain retry-claim <payout_id>
+axo onchain retry-claim <payout_id>
 ```
 
 Expected status progression: `queued` -> `broadcasting` -> `succeeded` (terminal) or `failed_invoice_expired` (retryable terminal).
@@ -341,7 +341,7 @@ Expected status progression: `queued` -> `broadcasting` -> `succeeded` (terminal
 ### Inspect onchain records in local payments
 
 ```bash
-zbdw payments | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).filter(p=>p.source==='onchain').forEach(p=>console.log(JSON.stringify(p)))"
+axo payments | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).filter(p=>p.source==='onchain').forEach(p=>console.log(JSON.stringify(p)))"
 ```
 
 Expected onchain payment record fields:

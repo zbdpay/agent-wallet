@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 const DEFAULT_ZBD_API_BASE_URL = "https://api.zbdpay.com";
 const DEFAULT_ZBD_AI_BASE_URL = "https://zbd.ai";
+const SHIELD_AUTOMATIC_RETRY_ATTEMPTS = 2;
 
 interface WalletApiResponse {
   balance?: unknown;
@@ -60,7 +61,12 @@ export interface WithdrawStatusResult {
   amount_sats: number;
 }
 
-export type PaylinkLifecycle = "created" | "active" | "paid" | "expired" | "dead";
+export type PaylinkLifecycle =
+  | "created"
+  | "active"
+  | "paid"
+  | "expired"
+  | "dead";
 
 export interface PaylinkResult {
   id: string;
@@ -134,7 +140,11 @@ export interface OnchainPayoutRetryClaimResult {
   };
 }
 
-export type SendDestinationKind = "bolt11" | "ln_address" | "gamertag" | "lnurl";
+export type SendDestinationKind =
+  | "bolt11"
+  | "ln_address"
+  | "gamertag"
+  | "lnurl";
 
 export function resolveApiKey(options: {
   flagKey?: string;
@@ -159,10 +169,15 @@ export function resolveApiKey(options: {
     }
   }
 
-  throw new CliError("missing_api_key", "API key is required. Provide --key or set ZBD_API_KEY.");
+  throw new CliError(
+    "missing_api_key",
+    "API key is required. Provide --key or set ZBD_API_KEY.",
+  );
 }
 
-export async function registerWalletIdentity(apiKey: string): Promise<{ lightningAddress: string }> {
+export async function registerWalletIdentity(
+  apiKey: string,
+): Promise<{ lightningAddress: string }> {
   const registrationBaseUrl = getZbdAiBaseUrl();
   let response: Response;
   try {
@@ -186,10 +201,14 @@ export async function registerWalletIdentity(apiKey: string): Promise<{ lightnin
       throw new CliError("invalid_api_key", "API key rejected by ZBD API");
     }
 
-    throw new CliError("register_failed", "Failed to register wallet identity", {
-      status: response.status,
-      response: body,
-    });
+    throw new CliError(
+      "register_failed",
+      "Failed to register wallet identity",
+      {
+        status: response.status,
+        response: body,
+      },
+    );
   }
 
   const lightningAddress = pickString(
@@ -201,7 +220,10 @@ export async function registerWalletIdentity(apiKey: string): Promise<{ lightnin
   );
 
   if (!lightningAddress) {
-    throw new CliError("register_failed", "Registration response missing lightningAddress");
+    throw new CliError(
+      "register_failed",
+      "Registration response missing lightningAddress",
+    );
   }
 
   return { lightningAddress };
@@ -222,16 +244,25 @@ export async function fetchWalletBalanceSats(apiKey: string): Promise<number> {
       throw new CliError("invalid_api_key", "API key rejected by ZBD API");
     }
 
-    throw new CliError("wallet_request_failed", "Failed to fetch wallet balance", {
-      status: response.status,
-      response: body,
-    });
+    throw new CliError(
+      "wallet_request_failed",
+      "Failed to fetch wallet balance",
+      {
+        status: response.status,
+        response: body,
+      },
+    );
   }
 
-  const payload = (body && typeof body === "object" ? body : null) as WalletApiResponse | null;
+  const payload = (
+    body && typeof body === "object" ? body : null
+  ) as WalletApiResponse | null;
   const msatValue = parseMsatValue(payload);
   if (msatValue === null) {
-    throw new CliError("wallet_response_invalid", "Wallet response missing msat balance value");
+    throw new CliError(
+      "wallet_response_invalid",
+      "Wallet response missing msat balance value",
+    );
   }
 
   return Math.floor(msatValue / 1000);
@@ -246,7 +277,10 @@ export async function createReceiveInvoice(
   const descriptionValue = description.trim() || "Payment request";
   const body = await requestZbd(apiKey, "/v0/charges", {
     method: "POST",
-    body: JSON.stringify({ amount: amountMsats, description: descriptionValue }),
+    body: JSON.stringify({
+      amount: amountMsats,
+      description: descriptionValue,
+    }),
   });
 
   const invoice = pickString(
@@ -279,10 +313,20 @@ export async function createReceiveInvoice(
     ["data", "invoice_expires_at"],
     ["data", "invoiceExpiresAt"],
   );
-  const id = pickString(body, ["id"], ["charge_id"], ["data", "id"], ["data", "charge_id"]) ?? paymentHash;
+  const id =
+    pickString(
+      body,
+      ["id"],
+      ["charge_id"],
+      ["data", "id"],
+      ["data", "charge_id"],
+    ) ?? paymentHash;
 
   if (!invoice || !expiresAt || !id) {
-    throw new CliError("receive_failed", "Invoice response missing required fields");
+    throw new CliError(
+      "receive_failed",
+      "Invoice response missing required fields",
+    );
   }
 
   return {
@@ -301,7 +345,9 @@ export async function createStaticCharge(
   options?: { amountSats?: number; description?: string },
 ): Promise<StaticChargeResult> {
   const fixedAmountMsats =
-    typeof options?.amountSats === "number" ? String(options.amountSats * 1000) : null;
+    typeof options?.amountSats === "number"
+      ? String(options.amountSats * 1000)
+      : null;
   const bodyPayload = {
     minAmount: fixedAmountMsats ?? "1000",
     maxAmount: fixedAmountMsats ?? "500000000",
@@ -313,7 +359,13 @@ export async function createStaticCharge(
     body: JSON.stringify(bodyPayload),
   });
 
-  const chargeId = pickString(body, ["id"], ["charge_id"], ["data", "id"], ["data", "charge_id"]);
+  const chargeId = pickString(
+    body,
+    ["id"],
+    ["charge_id"],
+    ["data", "id"],
+    ["data", "charge_id"],
+  );
   const lightningAddress = pickString(
     body,
     ["lightning_address"],
@@ -332,7 +384,10 @@ export async function createStaticCharge(
   );
 
   if (!chargeId || (!lightningAddress && !lnurl)) {
-    throw new CliError("receive_failed", "Static charge response missing required fields");
+    throw new CliError(
+      "receive_failed",
+      "Static charge response missing required fields",
+    );
   }
 
   return {
@@ -364,55 +419,90 @@ export async function sendPayment(
     payload = {
       lnAddress: destination,
       amount: String(amountSats * 1000),
-      comment: "Sent via zbdw",
+      comment: "Sent via axo",
     };
   } else {
     path = "/v0/gamertag/send-payment";
     const normalizedGamertag = destination.trim().replace(/^@+/, "");
     if (!normalizedGamertag) {
-      throw new CliError("invalid_gamertag", "Gamertag destination is invalid", {
-        destination,
-      });
+      throw new CliError(
+        "invalid_gamertag",
+        "Gamertag destination is invalid",
+        {
+          destination,
+        },
+      );
     }
 
     payload = {
       gamertag: normalizedGamertag,
       amount: String(amountSats * 1000),
-      description: "Sent via zbdw",
+      description: "Sent via axo",
     };
   }
 
   let body: unknown;
-  try {
-    body = await requestShield(apiKey, "/api/shield/send", {
-      method: "POST",
-      body: JSON.stringify({
-        destination,
-        amount_sats: amountSats,
-        kind,
-        idempotency_key: generateIdempotencyKey(),
-      }),
-    });
-  } catch (error) {
-    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
-      throw error;
-    }
+  if (isShieldEnabled()) {
+    const idempotencyKey = generateIdempotencyKey();
+    try {
+      body = await requestShieldWithAutomaticRetries(
+        apiKey,
+        "/api/shield/send",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            destination,
+            amount_sats: amountSats,
+            kind,
+            idempotency_key: idempotencyKey,
+          }),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+        throw error;
+      }
 
-    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      body = await requestZbd(apiKey, path, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+  } else {
     body = await requestZbd(apiKey, path, {
       method: "POST",
       body: JSON.stringify(payload),
     });
   }
 
-  const paymentId = pickString(body, ["id"], ["payment_id"], ["paymentId"], ["data", "id"], ["data", "payment_id"]);
+  const paymentId = pickString(
+    body,
+    ["id"],
+    ["payment_id"],
+    ["paymentId"],
+    ["data", "id"],
+    ["data", "payment_id"],
+  );
   if (!paymentId) {
     throw new CliError("send_failed", "Payment response missing payment id");
   }
 
   const feeSats = parseSats(body, {
-    msatPaths: [["fee"], ["feeMsat"], ["fee_msat"], ["data", "fee"], ["data", "feeMsat"], ["data", "fee_msat"]],
-    satPaths: [["fee_sats"], ["feeSats"], ["data", "fee_sats"], ["data", "feeSats"]],
+    msatPaths: [
+      ["fee"],
+      ["feeMsat"],
+      ["fee_msat"],
+      ["data", "fee"],
+      ["data", "feeMsat"],
+      ["data", "fee_msat"],
+    ],
+    satPaths: [
+      ["fee_sats"],
+      ["feeSats"],
+      ["data", "fee_sats"],
+      ["data", "feeSats"],
+    ],
     fallback: 0,
   });
 
@@ -426,24 +516,64 @@ export async function sendPayment(
   };
 }
 
-export async function fetchPaymentDetail(apiKey: string, id: string): Promise<PaymentDetailResult> {
-  const body = await requestZbd(apiKey, `/v0/charges/${encodeURIComponent(id)}`, {
-    method: "GET",
-  });
+export async function fetchPaymentDetail(
+  apiKey: string,
+  id: string,
+): Promise<PaymentDetailResult> {
+  const body = await requestZbd(
+    apiKey,
+    `/v0/charges/${encodeURIComponent(id)}`,
+    {
+      method: "GET",
+    },
+  );
 
-  const paymentId = pickString(body, ["id"], ["payment_id"], ["paymentId"], ["charge_id"], ["data", "id"]) ?? id;
+  const paymentId =
+    pickString(
+      body,
+      ["id"],
+      ["payment_id"],
+      ["paymentId"],
+      ["charge_id"],
+      ["data", "id"],
+    ) ?? id;
   const amountSats = parseSats(body, {
-    msatPaths: [["amount"], ["amountMsat"], ["amount_msat"], ["data", "amount"], ["data", "amountMsat"], ["data", "amount_msat"]],
-    satPaths: [["amount_sats"], ["amountSats"], ["data", "amount_sats"], ["data", "amountSats"]],
+    msatPaths: [
+      ["amount"],
+      ["amountMsat"],
+      ["amount_msat"],
+      ["data", "amount"],
+      ["data", "amountMsat"],
+      ["data", "amount_msat"],
+    ],
+    satPaths: [
+      ["amount_sats"],
+      ["amountSats"],
+      ["data", "amount_sats"],
+      ["data", "amountSats"],
+    ],
     fallback: 0,
   });
   const feeSats = parseSats(body, {
-    msatPaths: [["fee"], ["feeMsat"], ["fee_msat"], ["data", "fee"], ["data", "feeMsat"], ["data", "fee_msat"]],
-    satPaths: [["fee_sats"], ["feeSats"], ["data", "fee_sats"], ["data", "feeSats"]],
+    msatPaths: [
+      ["fee"],
+      ["feeMsat"],
+      ["fee_msat"],
+      ["data", "fee"],
+      ["data", "feeMsat"],
+      ["data", "fee_msat"],
+    ],
+    satPaths: [
+      ["fee_sats"],
+      ["feeSats"],
+      ["data", "fee_sats"],
+      ["data", "feeSats"],
+    ],
     fallback: 0,
   });
 
-  const typeRaw = pickString(body, ["type"], ["kind"], ["data", "type"]) ?? "send";
+  const typeRaw =
+    pickString(body, ["type"], ["kind"], ["data", "type"]) ?? "send";
 
   return {
     id: paymentId,
@@ -456,27 +586,48 @@ export async function fetchPaymentDetail(apiKey: string, id: string): Promise<Pa
   };
 }
 
-export async function createWithdrawRequest(apiKey: string, amountSats: number): Promise<WithdrawCreateResult> {
+export async function createWithdrawRequest(
+  apiKey: string,
+  amountSats: number,
+): Promise<WithdrawCreateResult> {
   const amountMsats = String(amountSats * 1000);
   let body: unknown;
-  try {
-    body = await requestShield(apiKey, "/api/shield/withdraw", {
-      method: "POST",
-      body: JSON.stringify({
-        amount_sats: amountSats,
-        description: "Withdrawal request",
-        idempotency_key: generateIdempotencyKey(),
-      }),
-    });
-  } catch (error) {
-    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
-      throw error;
-    }
+  if (isShieldEnabled()) {
+    const idempotencyKey = generateIdempotencyKey();
+    try {
+      body = await requestShieldWithAutomaticRetries(
+        apiKey,
+        "/api/shield/withdraw",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            amount_sats: amountSats,
+            description: "Withdrawal request",
+            idempotency_key: idempotencyKey,
+          }),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+        throw error;
+      }
 
-    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      body = await requestZbd(apiKey, "/v0/withdrawal-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          amount: amountMsats,
+          description: "Withdrawal request",
+        }),
+      });
+    }
+  } else {
     body = await requestZbd(apiKey, "/v0/withdrawal-requests", {
       method: "POST",
-      body: JSON.stringify({ amount: amountMsats, description: "Withdrawal request" }),
+      body: JSON.stringify({
+        amount: amountMsats,
+        description: "Withdrawal request",
+      }),
     });
   }
 
@@ -511,7 +662,10 @@ export async function createWithdrawRequest(apiKey: string, amountSats: number):
   const lnurl = lnurlRaw ? normalizeLightningUri(lnurlRaw) : null;
 
   if (!withdrawId || !lnurl) {
-    throw new CliError("withdraw_failed", "Withdraw creation response missing required fields");
+    throw new CliError(
+      "withdraw_failed",
+      "Withdraw creation response missing required fields",
+    );
   }
 
   return {
@@ -522,16 +676,43 @@ export async function createWithdrawRequest(apiKey: string, amountSats: number):
   };
 }
 
-export async function fetchWithdrawStatus(apiKey: string, withdrawId: string): Promise<WithdrawStatusResult> {
-  const body = await requestZbd(apiKey, `/v0/withdrawal-requests/${encodeURIComponent(withdrawId)}`, {
-    method: "GET",
-  });
+export async function fetchWithdrawStatus(
+  apiKey: string,
+  withdrawId: string,
+): Promise<WithdrawStatusResult> {
+  const body = await requestZbd(
+    apiKey,
+    `/v0/withdrawal-requests/${encodeURIComponent(withdrawId)}`,
+    {
+      method: "GET",
+    },
+  );
 
-  const id = pickString(body, ["id"], ["withdraw_id"], ["withdrawId"], ["data", "id"], ["data", "withdraw_id"]) ?? withdrawId;
+  const id =
+    pickString(
+      body,
+      ["id"],
+      ["withdraw_id"],
+      ["withdrawId"],
+      ["data", "id"],
+      ["data", "withdraw_id"],
+    ) ?? withdrawId;
 
   const amountSats = parseSats(body, {
-    msatPaths: [["amount"], ["amountMsat"], ["amount_msat"], ["data", "amount"], ["data", "amountMsat"], ["data", "amount_msat"]],
-    satPaths: [["amount_sats"], ["amountSats"], ["data", "amount_sats"], ["data", "amountSats"]],
+    msatPaths: [
+      ["amount"],
+      ["amountMsat"],
+      ["amount_msat"],
+      ["data", "amount"],
+      ["data", "amountMsat"],
+      ["data", "amount_msat"],
+    ],
+    satPaths: [
+      ["amount_sats"],
+      ["amountSats"],
+      ["data", "amount_sats"],
+      ["data", "amountSats"],
+    ],
     fallback: 0,
   });
 
@@ -567,10 +748,17 @@ export async function createPaylink(
   return toPaylinkResult(body);
 }
 
-export async function fetchPaylink(apiKey: string, id: string): Promise<PaylinkResult> {
-  const body = await requestZbdAiPaylinks(apiKey, `/api/paylinks/${encodeURIComponent(id)}`, {
-    method: "GET",
-  });
+export async function fetchPaylink(
+  apiKey: string,
+  id: string,
+): Promise<PaylinkResult> {
+  const body = await requestZbdAiPaylinks(
+    apiKey,
+    `/api/paylinks/${encodeURIComponent(id)}`,
+    {
+      method: "GET",
+    },
+  );
 
   return toPaylinkResult(body, id);
 }
@@ -592,10 +780,17 @@ export async function listPaylinks(apiKey: string): Promise<PaylinkResult[]> {
   return [];
 }
 
-export async function cancelPaylink(apiKey: string, id: string): Promise<PaylinkResult> {
-  const body = await requestZbdAiPaylinks(apiKey, `/api/paylinks/${encodeURIComponent(id)}/cancel`, {
-    method: "POST",
-  });
+export async function cancelPaylink(
+  apiKey: string,
+  id: string,
+): Promise<PaylinkResult> {
+  const body = await requestZbdAiPaylinks(
+    apiKey,
+    `/api/paylinks/${encodeURIComponent(id)}/cancel`,
+    {
+      method: "POST",
+    },
+  );
 
   return toPaylinkResult(body, id);
 }
@@ -626,8 +821,17 @@ export async function quoteOnchainPayout(
   const destination = pickString(source, ["destination"]);
   const expiresAt = pickString(source, ["expires_at"], ["expiresAt"]);
 
-  if (!quoteId || !destination || !expiresAt || amountSats <= 0 || totalSats <= 0) {
-    throw new CliError("onchain_payout_response_invalid", "Onchain payout quote response missing required fields");
+  if (
+    !quoteId ||
+    !destination ||
+    !expiresAt ||
+    amountSats <= 0 ||
+    totalSats <= 0
+  ) {
+    throw new CliError(
+      "onchain_payout_response_invalid",
+      "Onchain payout quote response missing required fields",
+    );
   }
 
   return {
@@ -642,23 +846,40 @@ export async function quoteOnchainPayout(
 
 export async function createOnchainPayout(
   apiKey: string,
-  payload: { amount_sats: number; destination: string; accept_terms: boolean; payout_id?: string },
+  payload: {
+    amount_sats: number;
+    destination: string;
+    accept_terms: boolean;
+    payout_id?: string;
+  },
 ): Promise<OnchainPayoutCreateResult> {
   let body: unknown;
-  try {
-    body = await requestShield(apiKey, "/api/shield/payout", {
-      method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        idempotency_key: generateIdempotencyKey(),
-      }),
-    });
-  } catch (error) {
-    if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
-      throw error;
-    }
+  if (isShieldEnabled()) {
+    const idempotencyKey = generateIdempotencyKey();
+    try {
+      body = await requestShieldWithAutomaticRetries(
+        apiKey,
+        "/api/shield/payout",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...payload,
+            idempotency_key: idempotencyKey,
+          }),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== "shield_unreachable") {
+        throw error;
+      }
 
-    console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      console.warn("WARNING: Shield unreachable - spending uncontrolled");
+      body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+  } else {
     body = await requestZbdAiOnchainPayouts(apiKey, "/api/payouts", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -675,7 +896,10 @@ export async function createOnchainPayout(
   const destination = pickString(source, ["destination"]);
 
   if (!payoutId || !status || amountSats <= 0 || !destination) {
-    throw new CliError("onchain_payout_response_invalid", "Onchain payout create response missing required fields");
+    throw new CliError(
+      "onchain_payout_response_invalid",
+      "Onchain payout create response missing required fields",
+    );
   }
 
   return {
@@ -688,10 +912,17 @@ export async function createOnchainPayout(
   };
 }
 
-export async function fetchOnchainPayout(apiKey: string, payoutId: string): Promise<OnchainPayoutStatusResult> {
-  const body = await requestZbdAiOnchainPayouts(apiKey, `/api/payouts/${encodeURIComponent(payoutId)}`, {
-    method: "GET",
-  });
+export async function fetchOnchainPayout(
+  apiKey: string,
+  payoutId: string,
+): Promise<OnchainPayoutStatusResult> {
+  const body = await requestZbdAiOnchainPayouts(
+    apiKey,
+    `/api/payouts/${encodeURIComponent(payoutId)}`,
+    {
+      method: "GET",
+    },
+  );
 
   const source = getOnchainPayoutSource(body);
   const id = pickString(source, ["payout_id"], ["payoutId"]) ?? payoutId;
@@ -711,10 +942,17 @@ export async function fetchOnchainPayout(apiKey: string, payoutId: string): Prom
   };
 }
 
-export async function retryOnchainClaim(apiKey: string, payoutId: string): Promise<OnchainPayoutRetryClaimResult> {
-  const body = await requestZbdAiOnchainPayouts(apiKey, `/api/payouts/${encodeURIComponent(payoutId)}/retry-claim`, {
-    method: "POST",
-  });
+export async function retryOnchainClaim(
+  apiKey: string,
+  payoutId: string,
+): Promise<OnchainPayoutRetryClaimResult> {
+  const body = await requestZbdAiOnchainPayouts(
+    apiKey,
+    `/api/payouts/${encodeURIComponent(payoutId)}/retry-claim`,
+    {
+      method: "POST",
+    },
+  );
 
   const source = getOnchainPayoutSource(body);
   const id = pickString(source, ["payout_id"], ["payoutId"]) ?? payoutId;
@@ -826,7 +1064,11 @@ async function safeJson(response: Response): Promise<unknown> {
   }
 }
 
-async function requestZbd(apiKey: string, path: string, init: { method: string; body?: string }): Promise<unknown> {
+async function requestZbd(
+  apiKey: string,
+  path: string,
+  init: { method: string; body?: string },
+): Promise<unknown> {
   const apiBaseUrl = getZbdApiBaseUrl();
   let response: Response;
   try {
@@ -839,7 +1081,10 @@ async function requestZbd(apiKey: string, path: string, init: { method: string; 
       body: init.body,
     });
   } catch {
-    throw new CliError("wallet_unreachable", `Failed to reach ZBD API at ${apiBaseUrl}`);
+    throw new CliError(
+      "wallet_unreachable",
+      `Failed to reach ZBD API at ${apiBaseUrl}`,
+    );
   }
 
   const body = await safeJson(response);
@@ -859,7 +1104,8 @@ async function requestZbd(apiKey: string, path: string, init: { method: string; 
   if (success === false) {
     throw new CliError(
       "wallet_request_failed",
-      pickString(body, ["message"], ["error"], ["errorString"]) ?? "ZBD API request failed",
+      pickString(body, ["message"], ["error"], ["errorString"]) ??
+        "ZBD API request failed",
       {
         status: response.status,
         response: body,
@@ -889,9 +1135,13 @@ async function requestShield(
       body: init.body,
     });
   } catch {
-    throw new CliError("shield_unreachable", `Failed to reach shield API at ${shieldBaseUrl}`, {
-      path: shieldPath,
-    });
+    throw new CliError(
+      "shield_unreachable",
+      `Failed to reach shield API at ${shieldBaseUrl}`,
+      {
+        path: shieldPath,
+      },
+    );
   }
 
   const body = await safeJson(response);
@@ -911,7 +1161,8 @@ async function requestShield(
   if (response.status === 403) {
     throw new CliError(
       "allowance_exceeded",
-      pickString(body, ["reason"], ["message"], ["errorString"]) ?? "Allowance exceeded",
+      pickString(body, ["reason"], ["message"], ["errorString"]) ??
+        "Allowance exceeded",
       {
         approval_required: getAtPath(body, ["approval_required"]) === true,
         approval_id: pickString(body, ["approval_id"], ["approvalId"]),
@@ -928,7 +1179,8 @@ async function requestShield(
 
     throw new CliError(
       pickString(body, ["error"]) ?? "shield_request_failed",
-      pickString(body, ["message"], ["errorString"]) ?? "Shield API request failed",
+      pickString(body, ["message"], ["errorString"]) ??
+        "Shield API request failed",
       {
         status: response.status,
         response: body,
@@ -941,7 +1193,8 @@ async function requestShield(
   if (success === false) {
     throw new CliError(
       pickString(body, ["error"]) ?? "shield_request_failed",
-      pickString(body, ["message"], ["errorString"]) ?? "Shield API request failed",
+      pickString(body, ["message"], ["errorString"]) ??
+        "Shield API request failed",
       {
         status: response.status,
         response: body,
@@ -951,6 +1204,38 @@ async function requestShield(
   }
 
   return body;
+}
+
+async function requestShieldWithAutomaticRetries(
+  apiKey: string,
+  shieldPath: string,
+  init: { method: string; body?: string },
+): Promise<unknown> {
+  for (
+    let attempt = 1;
+    attempt <= SHIELD_AUTOMATIC_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      return await requestShield(apiKey, shieldPath, init);
+    } catch (error) {
+      if (
+        !(error instanceof CliError) ||
+        error.code !== "shield_unreachable" ||
+        attempt === SHIELD_AUTOMATIC_RETRY_ATTEMPTS
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new CliError(
+    "shield_unreachable",
+    `Failed to reach shield API at ${getZbdAiBaseUrl()}`,
+    {
+      path: shieldPath,
+    },
+  );
 }
 
 async function requestZbdAiPaylinks(
@@ -971,7 +1256,10 @@ async function requestZbdAiPaylinks(
       body: init.body,
     });
   } catch {
-    throw new CliError("paylink_unreachable", `Failed to reach paylinks API at ${apiBaseUrl}`);
+    throw new CliError(
+      "paylink_unreachable",
+      `Failed to reach paylinks API at ${apiBaseUrl}`,
+    );
   }
 
   const body = await safeJson(response);
@@ -997,7 +1285,8 @@ async function requestZbdAiPaylinks(
   if (success === false) {
     throw new CliError(
       pickString(body, ["error"]) ?? "paylink_request_failed",
-      pickString(body, ["message"], ["errorString"]) ?? "Paylinks API request failed",
+      pickString(body, ["message"], ["errorString"]) ??
+        "Paylinks API request failed",
       {
         status: response.status,
         response: body,
@@ -1027,18 +1316,25 @@ async function requestZbdAiOnchainPayouts(
       body: init.body,
     });
   } catch {
-    throw new CliError("onchain_payout_unreachable", `Failed to reach onchain payout API at ${apiBaseUrl}`);
+    throw new CliError(
+      "onchain_payout_unreachable",
+      `Failed to reach onchain payout API at ${apiBaseUrl}`,
+    );
   }
 
   const body = await safeJson(response);
   if (!response.ok) {
     if (response.status === 401) {
-      throw new CliError("invalid_api_key", "API key rejected by onchain payout API");
+      throw new CliError(
+        "invalid_api_key",
+        "API key rejected by onchain payout API",
+      );
     }
 
     throw new CliError(
       pickString(body, ["error"]) ?? "onchain_payout_request_failed",
-      pickString(body, ["message"], ["errorString"]) ?? "Onchain payout API request failed",
+      pickString(body, ["message"], ["errorString"]) ??
+        "Onchain payout API request failed",
       {
         status: response.status,
         response: body,
@@ -1051,7 +1347,8 @@ async function requestZbdAiOnchainPayouts(
   if (success === false) {
     throw new CliError(
       pickString(body, ["error"]) ?? "onchain_payout_request_failed",
-      pickString(body, ["message"], ["errorString"]) ?? "Onchain payout API request failed",
+      pickString(body, ["message"], ["errorString"]) ??
+        "Onchain payout API request failed",
       {
         status: response.status,
         response: body,
@@ -1124,7 +1421,11 @@ function getOnchainPayoutSource(payload: unknown): unknown {
   return getAtPath(payload, ["data"]) ?? payload;
 }
 
-function parseKickoff(payload: unknown): { enqueued: boolean; workflow: string | null; kickoff_id: string | null } {
+function parseKickoff(payload: unknown): {
+  enqueued: boolean;
+  workflow: string | null;
+  kickoff_id: string | null;
+} {
   const kickoff = getAtPath(payload, ["kickoff"]);
   if (!kickoff || typeof kickoff !== "object") {
     return {
@@ -1142,17 +1443,23 @@ function parseKickoff(payload: unknown): { enqueued: boolean; workflow: string |
 }
 
 function toPaylinkResult(payload: unknown, fallbackId?: string): PaylinkResult {
-  const source = getAtPath(payload, ["paylink"]) ?? getAtPath(payload, ["data"]) ?? payload;
+  const source =
+    getAtPath(payload, ["paylink"]) ?? getAtPath(payload, ["data"]) ?? payload;
   const id =
     pickString(source, ["id"], ["paylink_id"], ["paylinkId"]) ??
     pickString(payload, ["id"], ["paylink_id"], ["paylinkId"]) ??
     fallbackId;
   if (!id) {
-    throw new CliError("paylink_response_invalid", "Paylink response missing id");
+    throw new CliError(
+      "paylink_response_invalid",
+      "Paylink response missing id",
+    );
   }
 
   const status =
-    pickString(source, ["status"], ["state"]) ?? pickString(payload, ["status"], ["state"]) ?? "created";
+    pickString(source, ["status"], ["state"]) ??
+    pickString(payload, ["status"], ["state"]) ??
+    "created";
   const lifecycleRaw =
     pickString(source, ["lifecycle"], ["paylink_lifecycle"], ["state"]) ??
     pickString(payload, ["lifecycle"], ["paylink_lifecycle"], ["state"]) ??
@@ -1172,32 +1479,74 @@ function toPaylinkResult(payload: unknown, fallbackId?: string): PaylinkResult {
   return {
     id,
     url:
-      pickString(source, ["url"], ["checkout_url"], ["checkoutUrl"], ["paylink_url"], ["paylinkUrl"]) ??
-      pickString(payload, ["url"], ["checkout_url"], ["checkoutUrl"], ["paylink_url"], ["paylinkUrl"]) ??
+      pickString(
+        source,
+        ["url"],
+        ["checkout_url"],
+        ["checkoutUrl"],
+        ["paylink_url"],
+        ["paylinkUrl"],
+      ) ??
+      pickString(
+        payload,
+        ["url"],
+        ["checkout_url"],
+        ["checkoutUrl"],
+        ["paylink_url"],
+        ["paylinkUrl"],
+      ) ??
       null,
     status,
     lifecycle: parsePaylinkLifecycle(lifecycleRaw),
     amount_mode:
-      pickString(source, ["amount_mode"], ["amountMode"], ["config", "amount_mode"], ["config", "amountMode"]) ===
-      "range"
+      pickString(
+        source,
+        ["amount_mode"],
+        ["amountMode"],
+        ["config", "amount_mode"],
+        ["config", "amountMode"],
+      ) === "range"
         ? "range"
         : "fixed",
     amount_sats: hasAmount ? amountSats : null,
-    min_amount_sats: toNumber(getAtPath(source, ["min_amount_sats"])) ?? toNumber(getAtPath(source, ["minAmountSats"])),
-    max_amount_sats: toNumber(getAtPath(source, ["max_amount_sats"])) ?? toNumber(getAtPath(source, ["maxAmountSats"])),
-    multi_use: getAtPath(source, ["multi_use"]) === true || getAtPath(source, ["multiUse"]) === true,
+    min_amount_sats:
+      toNumber(getAtPath(source, ["min_amount_sats"])) ??
+      toNumber(getAtPath(source, ["minAmountSats"])),
+    max_amount_sats:
+      toNumber(getAtPath(source, ["max_amount_sats"])) ??
+      toNumber(getAtPath(source, ["maxAmountSats"])),
+    multi_use:
+      getAtPath(source, ["multi_use"]) === true ||
+      getAtPath(source, ["multiUse"]) === true,
     max_uses:
-      toNumber(getAtPath(source, ["max_uses"])) ?? toNumber(getAtPath(source, ["maxUses"])) ??
-      (getAtPath(source, ["max_uses"]) === null || getAtPath(source, ["maxUses"]) === null ? null : undefined),
-    use_count: toNumber(getAtPath(source, ["use_count"])) ?? toNumber(getAtPath(source, ["useCount"])),
+      toNumber(getAtPath(source, ["max_uses"])) ??
+      toNumber(getAtPath(source, ["maxUses"])) ??
+      (getAtPath(source, ["max_uses"]) === null ||
+      getAtPath(source, ["maxUses"]) === null
+        ? null
+        : undefined),
+    use_count:
+      toNumber(getAtPath(source, ["use_count"])) ??
+      toNumber(getAtPath(source, ["useCount"])),
     metadata:
-      getAtPath(source, ["metadata"]) && typeof getAtPath(source, ["metadata"]) === "object"
+      getAtPath(source, ["metadata"]) &&
+      typeof getAtPath(source, ["metadata"]) === "object"
         ? {
-            title: pickString(getAtPath(source, ["metadata"]), ["title"]) ?? undefined,
-            description: pickString(getAtPath(source, ["metadata"]), ["description"]) ?? undefined,
-            order_id: pickString(getAtPath(source, ["metadata"]), ["order_id"]) ?? undefined,
-            customer_ref: pickString(getAtPath(source, ["metadata"]), ["customer_ref"]) ?? undefined,
-            campaign: pickString(getAtPath(source, ["metadata"]), ["campaign"]) ?? undefined,
+            title:
+              pickString(getAtPath(source, ["metadata"]), ["title"]) ??
+              undefined,
+            description:
+              pickString(getAtPath(source, ["metadata"]), ["description"]) ??
+              undefined,
+            order_id:
+              pickString(getAtPath(source, ["metadata"]), ["order_id"]) ??
+              undefined,
+            customer_ref:
+              pickString(getAtPath(source, ["metadata"]), ["customer_ref"]) ??
+              undefined,
+            campaign:
+              pickString(getAtPath(source, ["metadata"]), ["campaign"]) ??
+              undefined,
           }
         : undefined,
     created_at:
@@ -1209,9 +1558,15 @@ function toPaylinkResult(payload: unknown, fallbackId?: string): PaylinkResult {
       pickString(payload, ["updated_at"], ["updatedAt"]) ??
       null,
     active_attempt_id:
-      pickString(payload, ["activeAttempt", "id"], ["active_attempt", "id"], ["attempt", "id"]) ??
+      pickString(
+        payload,
+        ["activeAttempt", "id"],
+        ["active_attempt", "id"],
+        ["attempt", "id"],
+      ) ?? undefined,
+    latest_attempt_id:
+      pickString(payload, ["latestAttempt", "id"], ["latest_attempt", "id"]) ??
       undefined,
-    latest_attempt_id: pickString(payload, ["latestAttempt", "id"], ["latest_attempt", "id"]) ?? undefined,
     paid_payment_id:
       pickString(
         source,
@@ -1250,7 +1605,13 @@ function parsePaylinkLifecycle(value: string): PaylinkLifecycle {
 
 function pickStatus(payload: unknown, fallback: string): string {
   return (
-    pickString(payload, ["status"], ["state"], ["data", "status"], ["data", "state"]) ?? fallback
+    pickString(
+      payload,
+      ["status"],
+      ["state"],
+      ["data", "status"],
+      ["data", "state"],
+    ) ?? fallback
   );
 }
 
@@ -1280,6 +1641,42 @@ function getZbdAiBaseUrl(): string {
   return process.env.ZBD_AI_BASE_URL ?? DEFAULT_ZBD_AI_BASE_URL;
 }
 
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
+    return true;
+  }
+
+  if (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
+    return false;
+  }
+
+  return undefined;
+}
+
+function isShieldEnabled(): boolean {
+  const envValue = parseBooleanEnv(process.env.ZBD_SHIELD_ENABLED);
+  if (envValue !== undefined) {
+    return envValue;
+  }
+
+  return true;
+}
+
 function generateIdempotencyKey(): string {
-  return `zbdw-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  return `axo-${Date.now()}-${randomUUID().slice(0, 8)}`;
 }

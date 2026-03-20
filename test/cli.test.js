@@ -1823,6 +1823,150 @@ test("fetch exits 1 when --max-sats is below challenge amount", async () => {
   });
 });
 
+test("fetch pays x402 challenges through shield and forwards X-PAYMENT", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    let x402Calls = 0;
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/x402") {
+        x402Calls += 1;
+        assert.equal(request.headers.apikey, "config-key-123");
+        assert.equal(request.headers["x-api-key"], "config-key-123");
+
+        const payload = JSON.parse(await readRequestBody(request));
+        assert.equal(payload.paymentRequirement.scheme, "exact");
+        assert.equal(payload.paymentRequirement.network, "base");
+        assert.equal(payload.paymentRequirement.maxAmountRequired, "21");
+        assert.equal(payload.paymentRequirement.resource, `${server.baseUrl}/x402-resource`);
+        assert.equal(payload.paymentRequirement.payTo, "0xabc");
+        assert.equal(payload.paymentRequirement.asset, "usdc");
+        assert.equal(payload.paymentRequirement.extra.amountSats, 21);
+        assert.equal(typeof payload.idempotency_key, "string");
+
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ paymentPayload: "x402-payload-001" }));
+        return;
+      }
+
+      if (request.method === "GET" && request.url === "/x402-resource") {
+        if (request.headers["x-payment"] === "x402-payload-001") {
+          response.statusCode = 200;
+          response.setHeader("content-type", "application/json");
+          response.end(JSON.stringify({ ok: true, payment: "x402-payload-001" }));
+          return;
+        }
+
+        response.statusCode = 402;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "21",
+                resource: `${server.baseUrl}/x402-resource`,
+                payTo: "0xabc",
+                asset: "usdc",
+                maxTimeoutSeconds: 30,
+                extra: {
+                  amountSats: 21,
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["fetch", `${server.baseUrl}/x402-resource`, "--max-sats", "21"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 0);
+      assert.equal(x402Calls, 1);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        status: 200,
+        body: { ok: true, payment: "x402-payload-001" },
+        payment_id: null,
+        amount_paid_sats: null,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("fetch rejects x402 challenges above --max-sats before paying shield", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
+    await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
+
+    let x402Calls = 0;
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "POST" && request.url === "/api/shield/x402") {
+        x402Calls += 1;
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "unexpected_x402_call" }));
+        return;
+      }
+
+      if (request.method === "GET" && request.url === "/x402-cap-resource") {
+        response.statusCode = 402;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "99",
+                resource: `${server.baseUrl}/x402-cap-resource`,
+                payTo: "0xdef",
+                asset: "usdc",
+                maxTimeoutSeconds: 30,
+                extra: {
+                  amountSats: 99,
+                },
+              },
+            ],
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const result = await runCli(["fetch", `${server.baseUrl}/x402-cap-resource`, "--max-sats", "50"], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_AI_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(result.status, 1);
+      assert.equal(x402Calls, 0);
+      const body = JSON.parse(result.stdout);
+      assert.equal(body.error, "max_sats_exceeded");
+      assert.match(body.message, /99 sats exceeds limit of 50 sats/);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 test("fetch surfaces self-pay guard from payment API", async () => {
   await withTempWalletPaths(async ({ configPath, paymentsPath }) => {
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");

@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -7,7 +8,7 @@ import {
   type PaidChallenge,
   type PaymentSettlement,
   type TokenCache,
-} from "@zbdpay/agent-fetch";
+} from "@axobot/fetch";
 import { loadWalletConfig, saveWalletConfig } from "../config/load-config.js";
 import { CliError, writeJson } from "../output/json.js";
 import {
@@ -476,7 +477,7 @@ export function registerCommandGroups(program: Command): void {
       if (typeof amountOrId !== "string" || amountOrId.trim().length === 0) {
         throw new CliError(
           "invalid_withdraw_usage",
-          "Use `zbdw withdraw <amount_sats>`, `zbdw withdraw <withdraw_id>`, `zbdw withdraw create <amount_sats>`, or `zbdw withdraw status <withdraw_id>`",
+          "Use `axo withdraw <amount_sats>`, `axo withdraw <withdraw_id>`, `axo withdraw create <amount_sats>`, or `axo withdraw status <withdraw_id>`",
         );
       }
 
@@ -682,12 +683,14 @@ export function registerCommandGroups(program: Command): void {
       const tokenCache: TokenCache = new FileTokenCache(getTokenCachePath());
       let paymentId: string | null = null;
       let amountPaidSats: number | null = null;
+      const payX402 = await createPayX402Hook(apiKey);
 
       try {
         const response = await agentFetch(url, {
           requestInit,
           maxPaymentSats,
           tokenCache,
+          payX402,
           pay: async (challenge) => {
             const payment = await withLoadingDots("Paying challenge", () =>
               sendPayment(apiKey, challenge.invoice, challenge.amountSats, "bolt11"),
@@ -727,7 +730,7 @@ export function registerCommandGroups(program: Command): void {
               paymentId: detail.id,
             } satisfies PaymentSettlement;
           },
-        });
+        } as Parameters<typeof agentFetch>[1] & { payX402: typeof payX402 });
 
         writeJson({
           status: response.status,
@@ -743,6 +746,62 @@ export function registerCommandGroups(program: Command): void {
         throw error;
       }
     });
+}
+
+type X402Challenge = {
+  paymentRequirement: Record<string, unknown>;
+};
+
+type X402PaidChallenge = {
+  paymentPayload: string;
+};
+
+type X402PayHook = (challenge: X402Challenge) => Promise<X402PaidChallenge>;
+
+async function createPayX402Hook(apiKey: string): Promise<X402PayHook> {
+  const agentFetchModule = (await import("@axobot/fetch")) as unknown as {
+    zbdPayX402?: (options?: { apiKey?: string }) => X402PayHook;
+  };
+
+  if (typeof agentFetchModule.zbdPayX402 === "function") {
+    return agentFetchModule.zbdPayX402({ apiKey });
+  }
+
+  return async (challenge: X402Challenge): Promise<X402PaidChallenge> => {
+    const zbdAiBaseUrl = process.env.ZBD_AI_BASE_URL;
+    if (!zbdAiBaseUrl) {
+      throw new Error("Missing ZBD_AI_BASE_URL for x402 shield payment");
+    }
+
+    const response = await fetch(`${zbdAiBaseUrl}/api/shield/x402`, {
+      method: "POST",
+      headers: {
+        apikey: apiKey,
+        "x-api-key": apiKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        paymentRequirement: challenge.paymentRequirement,
+        idempotency_key: `axo-x402-${randomUUID()}`,
+      }),
+    });
+
+    const body = await parseResponseBody(response);
+    const paymentPayload =
+      body && typeof body === "object" && "paymentPayload" in body && typeof body.paymentPayload === "string"
+        ? body.paymentPayload
+        : undefined;
+
+    if (!response.ok) {
+      throw new Error(`Shield x402 payment failed: ${response.status}`);
+    }
+
+    if (!paymentPayload) {
+      throw new Error("Shield x402 payment response missing paymentPayload");
+    }
+
+    return { paymentPayload };
+  };
 }
 
 function parseAmountSats(value: string | undefined): number {

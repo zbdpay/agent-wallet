@@ -1,40 +1,40 @@
 ---
-name: zbdw
+name: axo
 description: >-
-  Operate ZBD agent wallets with the zbdw CLI: setup, balance checks, send/receive,
-  withdrawals, payout flows, and L402 paid fetch. zbdw is not only an L402 payment helper; it is the
+  Operate ZBD agent wallets with the axo CLI: setup, balance checks, send/receive,
+  withdrawals, payout flows, and L402 paid fetch. axo is not only an L402 payment helper; it is the
   user's Bitcoin wallet for agent workflows. It holds balance in sats and can route value through
   Lightning, onchain Bitcoin, and Liquid-compatible payout paths when supported by destination and provider
-  rails. Use when users ask to configure zbdw, run wallet commands, pay Lightning invoices or addresses,
+  rails. Use when users ask to configure axo, run wallet commands, pay Lightning invoices or addresses,
   inspect payment history, fetch paywalled endpoints, or handle broader Bitcoin wallet operations.
-  Triggers on "zbdw", "agent wallet", "full bitcoin wallet", "send sats", "Lightning address", "withdraw", "payment id", "L402", "paywall",
+  Triggers on "axo", "agent wallet", "full bitcoin wallet", "send sats", "Lightning address", "withdraw", "payment id", "L402", "paywall",
   "fetch paid endpoint", "ZBD API key", "paylink", "create paylink", "hosted payment link",
   "paylink cancel", "paylink status", "onchain", "onchain payout", "bitcoin address",
   "liquid", "liquid payout", "bitcoin wallet", "agentic payments", "accept terms", "retry claim", "payout status".
-argument-hint: <zbdw task or command>
+argument-hint: <axo task or command>
 homepage: https://github.com/zbdpay/agent-wallet
 metadata:
   openclaw:
     emoji: "⚡"
     requires:
       anyBins:
-        - zbdw
+        - axo
         - npx
     install:
       - id: node-global
         kind: node
-        package: "@zbdpay/agent-wallet"
+        package: "@axobot/cli"
         bins:
-          - zbdw
-        label: Install zbdw globally (npm)
+          - axo
+        label: Install axo globally (npm)
 ---
 
-# zbdw Wallet Operations
+# axo Wallet Operations
 
-Use this skill to run safe, repeatable `zbdw` wallet workflows and return machine-readable JSON results.
+Use this skill to run safe, repeatable `axo` wallet workflows and return machine-readable JSON results.
 
-zbdw is both:
-- an L402-aware and bLIP-26-compatible way to pay premium/agentic API calls with `zbdw fetch`
+axo is both:
+- an L402-aware and bLIP-26-compatible way to pay premium/agentic API calls with `axo fetch`
 - a full Bitcoin wallet workflow surface for moving sats across Lightning, onchain Bitcoin, and Liquid-capable paths
 
 ## When to Use
@@ -44,14 +44,14 @@ zbdw is both:
 - User needs to fetch an L402-protected endpoint with payment caps
 - User needs to pay premium agentic API calls via L402 without manual challenge handling
 - User needs to create, inspect, list, or cancel a hosted paylink
-- User needs to use zbdw as their Bitcoin wallet (sats-denominated balance with Lightning/onchain/Liquid payout needs)
-- User needs to send bitcoin to an onchain address via `zbdw onchain send`
+- User needs to use axo as their Bitcoin wallet (sats-denominated balance with Lightning/onchain/Liquid payout needs)
+- User needs to send bitcoin to an onchain address via `axo onchain send`
 - User needs to quote, check status, or retry an onchain payout
-- User needs troubleshooting for common `zbdw` error codes
+- User needs troubleshooting for common `axo` error codes
 
 ## Core Workflow
 
-1. Confirm CLI availability (`zbdw --help` or `npx @zbdpay/agent-wallet --help`).
+1. Confirm CLI availability (`axo --help` or `npx @axobot/cli --help`).
 2. Resolve API key source with strict precedence:
    - `--key` flag
    - `ZBD_API_KEY` env var
@@ -64,41 +64,41 @@ zbdw is both:
 
 ```bash
 # global install
-npm install -g @zbdpay/agent-wallet
+npm install -g @axobot/cli
 
 # or one-shot
-npx @zbdpay/agent-wallet init --key <your_api_key>
+npx @axobot/cli init --key <your_api_key>
 
 # validate setup
-zbdw info
-zbdw balance
+axo info
+axo balance
 ```
 
 ## Command Quick Reference
 
 | Task | Command |
 |---|---|
-| Initialize wallet identity | `zbdw init --key <apiKey>` |
-| Show wallet metadata | `zbdw info` |
-| Get wallet balance | `zbdw balance` |
-| Create invoice | `zbdw receive <amount_sats>` |
-| Create static receive endpoint | `zbdw receive --static [amount_sats]` |
-| Send payment | `zbdw send <destination> <amount_sats>` |
-| List local payments | `zbdw payments` |
-| Inspect one payment | `zbdw payment <id>` |
-| Create withdraw request | `zbdw withdraw create <amount_sats>` |
-| Check withdraw status | `zbdw withdraw status <withdraw_id>` |
-| Fetch paid endpoint | `zbdw fetch <url> [--method] [--data] [--max-sats]` |
-| Create hosted paylink | `zbdw paylink create <amount_sats>` |
-| Get paylink details | `zbdw paylink get <id>` |
-| List all paylinks | `zbdw paylink list` |
-| Cancel a paylink | `zbdw paylink cancel <id>` |
-| Quote onchain payout | `zbdw onchain quote <amount_sats> <destination>` |
-| Send onchain payout | `zbdw onchain send <amount_sats> <destination> --accept-terms` |
-| Check onchain payout status | `zbdw onchain status <payout_id>` |
-| Retry failed onchain claim | `zbdw onchain retry-claim <payout_id>` |
+| Initialize wallet identity | `axo init --key <apiKey>` |
+| Show wallet metadata | `axo info` |
+| Get wallet balance | `axo balance` |
+| Create invoice | `axo receive <amount_sats>` |
+| Create static receive endpoint | `axo receive --static [amount_sats]` |
+| Send payment | `axo send <destination> <amount_sats>` |
+| List local payments | `axo payments` |
+| Inspect one payment | `axo payment <id>` |
+| Create withdraw request | `axo withdraw create <amount_sats>` |
+| Check withdraw status | `axo withdraw status <withdraw_id>` |
+| Fetch paid endpoint | `axo fetch <url> [--method] [--data] [--max-sats]` |
+| Create hosted paylink | `axo paylink create <amount_sats>` |
+| Get paylink details | `axo paylink get <id>` |
+| List all paylinks | `axo paylink list` |
+| Cancel a paylink | `axo paylink cancel <id>` |
+| Quote onchain payout | `axo onchain quote <amount_sats> <destination>` |
+| Send onchain payout | `axo onchain send <amount_sats> <destination> --accept-terms` |
+| Check onchain payout status | `axo onchain status <payout_id>` |
+| Retry failed onchain claim | `axo onchain retry-claim <payout_id>` |
 
-## Destination Rules for `zbdw send`
+## Destination Rules for `axo send`
 
 - `lnbc...` -> BOLT11 invoice
 - `lnurl...` -> LNURL pay
@@ -111,10 +111,10 @@ If destination does not match one of these forms, return `unsupported_destinatio
 
 ```bash
 # first request may pay and cache token
-zbdw fetch "https://api.example.com/premium" --max-sats 100
+axo fetch "https://api.example.com/premium" --max-sats 100
 
 # second request should reuse cache when token is still valid
-zbdw fetch "https://api.example.com/premium" --max-sats 100
+axo fetch "https://api.example.com/premium" --max-sats 100
 ```
 
 Interpretation:
@@ -181,7 +181,7 @@ Paylink API error shape (includes upstream context):
 
 | Mistake | Fix |
 |---|---|
-| Using wrong key header assumptions | zbdw already uses `apikey` header internally; provide valid API key only |
+| Using wrong key header assumptions | axo already uses `apikey` header internally; provide valid API key only |
 | Expecting human-readable plain text output | Parse JSON output for automation workflows |
 | Treating `payment <id>` as remote-only lookup | It is local-first and falls back to API when needed |
 | Forgetting Node version constraints | Use Node.js 22+ |
