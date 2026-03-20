@@ -38,6 +38,7 @@
     "lint": "npm run typecheck",
     "release": "semantic-release",
     "release:dry-run": "SEMANTIC_RELEASE_DRY_RUN=true semantic-release --dry-run --no-ci",
+    "smoke:cli": "npm run build && node ./test/smoke/cli-smoke.mjs",
     "test": "npm run build && node --test test/**/*.test.js",
     "typecheck": "tsc --noEmit"
   },

@@ -215,11 +215,14 @@ node axobot-cli/dist/cli.js fetch "http://localhost:8787/protected" --max-sats 1
 
 ```bash
 npm run build
+npm run smoke:cli
 npm run test
 npm run lint
 npm run typecheck
 npm run release:dry-run
 ```
+
+`npm run smoke:cli` is the quickest distribution-level verification. It builds `dist/cli.js`, checks the real `axo --help` output, and verifies the CLI still returns the JSON error envelope on an unknown command.
 
 ## Troubleshooting
 
