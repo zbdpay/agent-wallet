@@ -115,8 +115,9 @@ async function withTempWalletPaths(callback) {
   const configPath = join(dir, "config.json");
   const paymentsPath = join(dir, "payments.json");
   const paylinksPath = join(dir, "paylinks.json");
+  const sessionsPath = join(dir, "sessions.json");
   try {
-    await callback({ configPath, paymentsPath, paylinksPath });
+    await callback({ configPath, paymentsPath, paylinksPath, sessionsPath });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -203,6 +204,7 @@ test("help output lists planned command groups", async () => {
   assert.match(result.stdout, /withdraw/);
   assert.match(result.stdout, /onchain/);
   assert.match(result.stdout, /fetch/);
+  assert.match(result.stdout, /session/);
 });
 
 test("help output works when cli is invoked via symlink path", async () => {
@@ -320,6 +322,138 @@ test("info masks API key and prefers env key over config", async () => {
 
       assert.equal(result.stdout.includes("env-key-456"), false);
       assert.equal(result.stdout.includes("config-key-789"), false);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+test("session create, status, and close manage local MPP session state", async () => {
+  await withTempWalletPaths(async ({ configPath, paymentsPath, paylinksPath, sessionsPath }) => {
+    await writeFile(
+      configPath,
+      `${JSON.stringify({ apiKey: "config-key-789", lightningAddress: "agent-xyz@axo.bot" })}\n`,
+      "utf8",
+    );
+
+    let protectedHitCount = 0;
+    const server = await startMockServer(async (request, response) => {
+      if (request.method === "GET" && request.url === "/protected") {
+        const authorization = request.headers.authorization;
+        if (!authorization) {
+          response.statusCode = 402;
+          response.setHeader("content-type", "application/json");
+          response.setHeader(
+            "www-authenticate",
+            `Payment id="session-1", realm="mock.axo.test", method="lightning", intent="session", request="${Buffer.from(JSON.stringify({
+              amount: "5",
+              currency: "sat",
+              description: "/protected",
+              methodDetails: {
+                depositInvoice: "lnbc1depositinvoice",
+                paymentHash: "22".repeat(32),
+                depositAmount: "100",
+                idleTimeout: "300",
+              },
+            })).toString("base64url")}", expires="2026-03-20T12:00:00Z"`,
+          );
+          response.end(
+            JSON.stringify({
+              paymentChallenge: {
+                id: "session-1",
+              },
+              depositInvoice: "lnbc1depositinvoice",
+              paymentHash: "22".repeat(32),
+              amountSats: 5,
+              depositSats: 100,
+              reason: "new_session",
+            }),
+          );
+          return;
+        }
+
+        protectedHitCount += 1;
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        if (protectedHitCount === 1) {
+          response.end(JSON.stringify({ ok: true, phase: "opened" }));
+          return;
+        }
+
+        response.end(
+          JSON.stringify({
+            status: "closed",
+            refundedSats: 95,
+            refundStatus: "succeeded",
+          }),
+        );
+        return;
+      }
+
+      if (request.method === "POST" && request.url === "/v0/payments") {
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            data: {
+              id: "pay_123",
+              preimage: "33".repeat(32),
+              paymentHash: "44".repeat(32),
+              amount_sats: 100,
+            },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      const createResult = await runCli(["session", "create", `${server.baseUrl}/protected`], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_WALLET_PAYLINKS: paylinksPath,
+        ZBD_WALLET_SESSIONS: sessionsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(createResult.status, 0);
+      const created = JSON.parse(createResult.stdout);
+      assert.equal(created.status, "open");
+      assert.equal(created.url, `${server.baseUrl}/protected`);
+      assert.equal(created.return_lightning_address, "agent-xyz@axo.bot");
+
+      const storedAfterCreate = JSON.parse(await readFile(sessionsPath, "utf8"));
+      assert.equal(storedAfterCreate.sessions.length, 1);
+
+      const statusResult = await runCli(["session", "status", created.session_id], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_WALLET_PAYLINKS: paylinksPath,
+        ZBD_WALLET_SESSIONS: sessionsPath,
+      });
+
+      assert.equal(statusResult.status, 0);
+      const statusBody = JSON.parse(statusResult.stdout);
+      assert.equal(statusBody.session_id, created.session_id);
+      assert.equal(statusBody.status, "open");
+
+      const closeResult = await runCli(["session", "close", created.session_id], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_WALLET_PAYLINKS: paylinksPath,
+        ZBD_WALLET_SESSIONS: sessionsPath,
+      });
+
+      assert.equal(closeResult.status, 0);
+      const closed = JSON.parse(closeResult.stdout);
+      assert.equal(closed.status, "closed");
+      assert.equal(closed.close_result.refundedSats, 95);
+
+      const storedAfterClose = JSON.parse(await readFile(sessionsPath, "utf8"));
+      assert.equal(storedAfterClose.sessions[0].status, "closed");
     } finally {
       await server.close();
     }

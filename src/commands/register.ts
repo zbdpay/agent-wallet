@@ -12,6 +12,16 @@ import {
 import { loadWalletConfig, saveWalletConfig } from "../config/load-config.js";
 import { CliError, writeJson } from "../output/json.js";
 import {
+  getStoredSession,
+  listStoredSessions,
+  saveStoredSession,
+  type StoredMppSessionRecord,
+} from "../storage/sessions.js";
+import {
+  closeManagedMppSession,
+  createManagedMppSession,
+} from "../wallet/session.js";
+import {
   appendPayment,
   appendPaymentIfMissingById,
   findPaymentById,
@@ -662,6 +672,118 @@ export function registerCommandGroups(program: Command): void {
       writeJson(result);
     });
 
+  const session = program
+    .command("session")
+    .description("Manage MPP sessions");
+
+  session
+    .command("create")
+    .description("Open a managed MPP session for a protected resource")
+    .argument("<url>", "Protected resource URL")
+    .option("--key <apiKey>", "API key override")
+    .option("--return-invoice <invoice>", "Refund invoice for session close")
+    .option(
+      "--return-lightning-address <lightningAddress>",
+      "Refund Lightning Address for session close",
+    )
+    .action(
+      async (
+        url: string,
+        options?: {
+          key?: string;
+          returnInvoice?: string;
+          returnLightningAddress?: string;
+        },
+      ) => {
+        const config = await loadWalletConfig();
+        const { apiKey } = resolveApiKey({
+          flagKey: options?.key,
+          envKey: process.env.ZBD_API_KEY,
+          configKey: config?.apiKey,
+          allowConfigFallback: true,
+        });
+
+        const created = await createManagedMppSession({
+          apiKey,
+          url,
+          returnInvoice: normalizeOptionalString(options?.returnInvoice),
+          returnLightningAddress:
+            normalizeOptionalString(options?.returnLightningAddress) ??
+            normalizeOptionalString(config?.lightningAddress),
+          zbdApiBaseUrl: process.env.ZBD_API_BASE_URL,
+        });
+
+        await saveStoredSession(created.record);
+        writeJson(formatSessionRecord(created.record, { resourceStatus: created.resourceStatus }));
+      },
+    );
+
+  session
+    .command("status")
+    .description("Show a stored MPP session, or list all sessions")
+    .argument("[session_id]", "Session identifier")
+    .action(async (sessionId?: string) => {
+      if (typeof sessionId === "string" && sessionId.trim().length > 0) {
+        const record = await getStoredSession(sessionId.trim());
+        if (!record) {
+          throw new CliError("session_not_found", "MPP session not found", {
+            session_id: sessionId.trim(),
+          });
+        }
+
+        writeJson(formatSessionRecord(record));
+        return;
+      }
+
+      const records = await listStoredSessions();
+      writeJson(records.map((record) => formatSessionRecord(record)));
+    });
+
+  session
+    .command("close")
+    .description("Close a stored MPP session and refund the remaining balance")
+    .argument("<session_id>", "Session identifier")
+    .option("--key <apiKey>", "API key override")
+    .action(async (sessionId: string, options?: { key?: string }) => {
+      const record = await getStoredSession(sessionId);
+      if (!record) {
+        throw new CliError("session_not_found", "MPP session not found", {
+          session_id: sessionId,
+        });
+      }
+
+      if (record.status === "closed") {
+        writeJson(formatSessionRecord(record));
+        return;
+      }
+
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        flagKey: options?.key,
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const closeResult = await closeManagedMppSession({
+        apiKey,
+        record,
+        zbdApiBaseUrl: process.env.ZBD_API_BASE_URL,
+      });
+
+      const now = new Date().toISOString();
+      const nextRecord: StoredMppSessionRecord = {
+        ...record,
+        status: "closed",
+        lastUsedAt: now,
+        closedAt: now,
+        lastCloseResult: closeResult,
+      };
+      await saveStoredSession(nextRecord);
+
+      writeJson(formatSessionRecord(nextRecord));
+    });
+
   program
     .command("fetch")
     .description("Run L402-aware fetch flow")
@@ -757,6 +879,42 @@ type X402PaidChallenge = {
 };
 
 type X402PayHook = (challenge: X402Challenge) => Promise<X402PaidChallenge>;
+
+function normalizeOptionalString(value: string | undefined | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function formatSessionRecord(
+  record: StoredMppSessionRecord,
+  extras?: { resourceStatus?: number | undefined },
+): Record<string, unknown> {
+  return {
+    session_id: record.sessionId,
+    url: record.url,
+    status: record.status,
+    created_at: record.createdAt,
+    last_used_at: record.lastUsedAt,
+    closed_at: record.closedAt ?? null,
+    payment_hash: record.session.paymentHash,
+    deposit_sats: record.session.depositAmountSats ?? null,
+    return_invoice: record.session.returnInvoice ?? null,
+    return_lightning_address: record.session.returnLightningAddress ?? null,
+    challenge: {
+      id: record.challenge.id,
+      realm: record.challenge.realm,
+      method: record.challenge.method,
+      intent: record.challenge.intent,
+      expires: record.challenge.expires ?? null,
+    },
+    resource_status: extras?.resourceStatus ?? null,
+    close_result: record.lastCloseResult ?? null,
+  };
+}
 
 async function createPayX402Hook(apiKey: string): Promise<X402PayHook> {
   const agentFetchModule = (await import("@axobot/fetch")) as unknown as {
