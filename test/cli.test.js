@@ -328,7 +328,7 @@ test("info masks API key and prefers env key over config", async () => {
   });
 });
 
-test("session create, status, and close manage local MPP session state", async () => {
+test("session create, status, top-up, and close manage local MPP session state", async () => {
   await withTempWalletPaths(async ({ configPath, paymentsPath, paylinksPath, sessionsPath }) => {
     await writeFile(
       configPath,
@@ -336,7 +336,7 @@ test("session create, status, and close manage local MPP session state", async (
       "utf8",
     );
 
-    let protectedHitCount = 0;
+    let authorizedHitCount = 0;
     const server = await startMockServer(async (request, response) => {
       if (request.method === "GET" && request.url === "/protected") {
         const authorization = request.headers.authorization;
@@ -372,14 +372,53 @@ test("session create, status, and close manage local MPP session state", async (
           return;
         }
 
-        protectedHitCount += 1;
-        response.statusCode = 200;
+        authorizedHitCount += 1;
         response.setHeader("content-type", "application/json");
-        if (protectedHitCount === 1) {
+        if (authorizedHitCount === 1) {
+          response.statusCode = 200;
           response.end(JSON.stringify({ ok: true, phase: "opened" }));
           return;
         }
 
+        if (authorizedHitCount === 2) {
+          response.statusCode = 402;
+          response.setHeader(
+            "www-authenticate",
+            `Payment id="session-topup-1", realm="mock.axo.test", method="lightning", intent="session", request="${Buffer.from(JSON.stringify({
+              amount: "5",
+              currency: "sat",
+              description: "/protected",
+              methodDetails: {
+                depositInvoice: "lnbc1topupinvoice",
+                paymentHash: "55".repeat(32),
+                depositAmount: "50",
+                idleTimeout: "300",
+              },
+            })).toString("base64url")}", expires="2026-03-20T12:10:00Z"`,
+          );
+          response.end(
+            JSON.stringify({
+              paymentChallenge: {
+                id: "session-topup-1",
+              },
+              depositInvoice: "lnbc1topupinvoice",
+              paymentHash: "55".repeat(32),
+              amountSats: 5,
+              depositSats: 50,
+              sessionId: "22".repeat(32),
+              reason: "insufficient_balance",
+            }),
+          );
+          return;
+        }
+
+        if (authorizedHitCount === 3) {
+          response.statusCode = 200;
+          response.end(JSON.stringify({ ok: true, status: "top_up_applied" }));
+          return;
+        }
+
+        response.statusCode = 200;
         response.end(
           JSON.stringify({
             status: "closed",
@@ -440,6 +479,18 @@ test("session create, status, and close manage local MPP session state", async (
       assert.equal(statusBody.session_id, created.session_id);
       assert.equal(statusBody.status, "open");
 
+      const topUpResult = await runCli(["session", "top-up", created.session_id], {
+        ZBD_WALLET_CONFIG: configPath,
+        ZBD_WALLET_PAYMENTS: paymentsPath,
+        ZBD_WALLET_PAYLINKS: paylinksPath,
+        ZBD_WALLET_SESSIONS: sessionsPath,
+        ZBD_API_BASE_URL: server.baseUrl,
+      });
+
+      assert.equal(topUpResult.status, 0);
+      const toppedUp = JSON.parse(topUpResult.stdout);
+      assert.equal(toppedUp.status, "open");
+
       const closeResult = await runCli(["session", "close", created.session_id], {
         ZBD_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
@@ -454,6 +505,7 @@ test("session create, status, and close manage local MPP session state", async (
 
       const storedAfterClose = JSON.parse(await readFile(sessionsPath, "utf8"));
       assert.equal(storedAfterClose.sessions[0].status, "closed");
+      assert.equal(authorizedHitCount, 4);
     } finally {
       await server.close();
     }

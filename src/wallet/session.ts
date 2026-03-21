@@ -1,6 +1,8 @@
 import {
+  createLightningSessionBearerAuthorization,
   closeLightningSession,
   openLightningSession,
+  topUpLightningSession,
   type PaymentChallengeContext,
   createZbdLightningAdapter,
 } from "@axobot/mppx";
@@ -160,5 +162,84 @@ export async function closeManagedMppSession(input: {
 
   return {
     status: "closed",
+  };
+}
+
+export async function topUpManagedMppSession(input: {
+  apiKey: string;
+  record: StoredMppSessionRecord;
+  zbdApiBaseUrl?: string | undefined;
+  fetchImpl?: typeof fetch | undefined;
+}): Promise<{
+  record: StoredMppSessionRecord;
+  resourceStatus: number;
+}> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const probe = await fetchImpl(input.record.url, {
+    headers: {
+      authorization: `Payment ${createLightningSessionBearerAuthorization({
+        challenge: input.record.challenge,
+        session: input.record.session,
+      })}`,
+    },
+  });
+
+  if (probe.ok) {
+    throw new CliError("mpp_session_top_up_not_required", "Session request succeeded without requiring a top-up", {
+      status: probe.status,
+    });
+  }
+
+  if (probe.status !== 402) {
+    const bodyText = await readBodyText(probe.clone());
+    throw new CliError("mpp_session_top_up_failed", "Failed to request an MPP top-up challenge", {
+      status: probe.status,
+      response: parseResponsePayload(bodyText),
+    });
+  }
+
+  const bodyText = await readBodyText(probe.clone());
+  const challenge = ensureSessionChallenge(
+    requestChallenge({
+      status: probe.status,
+      headers: probe.headers,
+      bodyText,
+    }),
+  );
+
+  const adapter = createZbdLightningAdapter({
+    apiKey: input.apiKey,
+    zbdApiBaseUrl: input.zbdApiBaseUrl ?? process.env.ZBD_API_BASE_URL,
+    fetchImpl,
+  });
+
+  const toppedUp = await topUpLightningSession({
+    challenge,
+    session: input.record.session,
+    adapter,
+  });
+
+  const applied = await fetchImpl(input.record.url, {
+    headers: {
+      authorization: `Payment ${toppedUp.authorization}`,
+    },
+  });
+  const appliedBodyText = await readBodyText(applied.clone());
+  if (!applied.ok) {
+    throw new CliError("mpp_session_top_up_failed", "Failed to apply MPP session top-up", {
+      status: applied.status,
+      response: parseResponsePayload(appliedBodyText),
+    });
+  }
+
+  const now = new Date().toISOString();
+  return {
+    record: {
+      ...input.record,
+      challenge,
+      lastUsedAt: now,
+      status: "open",
+    },
+    resourceStatus: applied.status,
   };
 }

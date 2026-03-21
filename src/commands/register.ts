@@ -20,6 +20,7 @@ import {
 import {
   closeManagedMppSession,
   createManagedMppSession,
+  topUpManagedMppSession,
 } from "../wallet/session.js";
 import {
   appendPayment,
@@ -782,6 +783,37 @@ export function registerCommandGroups(program: Command): void {
       await saveStoredSession(nextRecord);
 
       writeJson(formatSessionRecord(nextRecord));
+    });
+
+  session
+    .command("top-up")
+    .description("Top up a stored MPP session when the resource requests more balance")
+    .argument("<session_id>", "Session identifier")
+    .option("--key <apiKey>", "API key override")
+    .action(async (sessionId: string, options?: { key?: string }) => {
+      const record = await getStoredSession(sessionId);
+      if (!record) {
+        throw new CliError("session_not_found", "MPP session not found", {
+          session_id: sessionId,
+        });
+      }
+
+      const config = await loadWalletConfig();
+      const { apiKey } = resolveApiKey({
+        flagKey: options?.key,
+        envKey: process.env.ZBD_API_KEY,
+        configKey: config?.apiKey,
+        allowConfigFallback: true,
+      });
+
+      const topUpResult = await topUpManagedMppSession({
+        apiKey,
+        record,
+        zbdApiBaseUrl: process.env.ZBD_API_BASE_URL,
+      });
+      await saveStoredSession(topUpResult.record);
+
+      writeJson(formatSessionRecord(topUpResult.record, { resourceStatus: topUpResult.resourceStatus }));
     });
 
   program
