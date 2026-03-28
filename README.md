@@ -1,4 +1,4 @@
-# @zbdpay/agent-wallet
+# @axobot/cli
 
 `zbdw` CLI for wallet operations, registration, history, and L402-aware fetch flows.
 
@@ -10,19 +10,19 @@
 ## Install
 
 ```bash
-npm install @zbdpay/agent-wallet
+npm install @axobot/cli
 ```
 
 Run without installation:
 
 ```bash
-npx @zbdpay/agent-wallet init --key <apiKey>
+npx @axobot/cli init --key <apiKey>
 ```
 
 Global install for frequent use:
 
 ```bash
-npm install -g @zbdpay/agent-wallet
+npm install -g @axobot/cli
 zbdw balance
 ```
 
@@ -172,7 +172,7 @@ Examples:
 - Token cache: `~/.zbd-wallet/token-cache.json`
 ## L402 Fetch Flow
 
-`zbdw fetch` is powered by `@zbdpay/agent-fetch`.
+`zbdw fetch` is powered by `@axobot/fetch`.
 
 - parses `402` challenge
 - pays invoice via wallet API

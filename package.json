@@ -1,16 +1,16 @@
 {
-  "name": "@zbdpay/agent-wallet",
+  "name": "@axobot/cli",
   "version": "1.3.0",
   "description": "CLI wallet and command router for ZBD agent payments",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zbdpay/agent-wallet.git"
+    "url": "git+https://github.com/zbdpay/axobot-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/zbdpay/agent-wallet/issues"
+    "url": "https://github.com/zbdpay/axobot-cli/issues"
   },
-  "homepage": "https://github.com/zbdpay/agent-wallet#readme",
+  "homepage": "https://github.com/zbdpay/axobot-cli#readme",
   "keywords": [
     "zbd",
     "wallet",
@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@zbdpay/agent-fetch": "^1.0.2",
+    "@axobot/fetch": "^1.0.2",
     "commander": "^12.1.0"
   },
   "devDependencies": {

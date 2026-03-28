@@ -5,7 +5,7 @@ Use this playbook to map `zbdw` JSON errors to concrete fixes.
 ## Fast Triage
 
 1. Confirm runtime: Node.js `>=22`
-2. Confirm command path: `zbdw --help` or `npx @zbdpay/agent-wallet --help`
+2. Confirm command path: `zbdw --help` or `npx @axobot/cli --help`
 3. Confirm API key source with precedence (`--key` > `ZBD_API_KEY` > config)
 4. Re-run failing command and inspect `error`, `message`, and `details`
 

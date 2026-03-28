@@ -23,7 +23,7 @@ metadata:
     install:
       - id: node-global
         kind: node
-        package: "@zbdpay/agent-wallet"
+        package: "@axobot/cli"
         bins:
           - zbdw
         label: Install zbdw globally (npm)
@@ -51,7 +51,7 @@ zbdw is both:
 
 ## Core Workflow
 
-1. Confirm CLI availability (`zbdw --help` or `npx @zbdpay/agent-wallet --help`).
+1. Confirm CLI availability (`zbdw --help` or `npx @axobot/cli --help`).
 2. Resolve API key source with strict precedence:
    - `--key` flag
    - `ZBD_API_KEY` env var
@@ -64,10 +64,10 @@ zbdw is both:
 
 ```bash
 # global install
-npm install -g @zbdpay/agent-wallet
+npm install -g @axobot/cli
 
 # or one-shot
-npx @zbdpay/agent-wallet init --key <your_api_key>
+npx @axobot/cli init --key <your_api_key>
 
 # validate setup
 zbdw info

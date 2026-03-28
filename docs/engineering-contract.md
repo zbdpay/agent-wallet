@@ -1,7 +1,7 @@
-# Engineering Contract — `@zbdpay/agent-wallet` (`zbdw`)
+# Engineering Contract — `@axobot/cli` (`zbdw`)
 
 > **Status**: Normative. All implementation work in this repository must conform to every rule in this document.
-> **Scope**: CLI wallet for AI agents. Wraps ZBD API calls, manages local config and payment history, and delegates L402 fetch flows to `@zbdpay/agent-fetch`.
+> **Scope**: CLI wallet for AI agents. Wraps ZBD API calls, manages local config and payment history, and delegates L402 fetch flows to `@axobot/fetch`.
 
 ---
 
@@ -32,7 +32,7 @@ The `init` command calls `POST https://zbd.ai/api/register` with the API key in 
 
 ### 1.3 L402 Authorization (delegated)
 
-The `fetch` subcommand delegates all L402 challenge/proof handling to `@zbdpay/agent-fetch`. The CLI MUST NOT reimplement L402 protocol logic. Auth header construction for L402 flows is entirely the responsibility of the `agent-fetch` library.
+The `fetch` subcommand delegates all L402 challenge/proof handling to `@axobot/fetch`. The CLI MUST NOT reimplement L402 protocol logic. Auth header construction for L402 flows is entirely the responsibility of the `agent-fetch` library.
 
 ---
 
@@ -96,7 +96,7 @@ The npm package provenance attestation (`--provenance` flag) MUST be enabled on 
 
 ### 3.3 Binary Distribution
 
-The `zbdw` binary is distributed via the npm package `bin` field. Consumers install it with `npm install -g @zbdpay/agent-wallet` or run it directly with `npx @zbdpay/agent-wallet`. No separate binary distribution channel is required in Phase 1.
+The `zbdw` binary is distributed via the npm package `bin` field. Consumers install it with `npm install -g @axobot/cli` or run it directly with `npx @axobot/cli`. No separate binary distribution channel is required in Phase 1.
 
 ### 3.4 Release Branch
 
@@ -128,7 +128,7 @@ Exit codes:
 
 ### 4.2 L402 / LNURL Compatibility
 
-The `fetch` subcommand MUST work with any bLIP-26-compliant L402 server, not just ZBD-hosted endpoints. Compatibility is inherited from `@zbdpay/agent-fetch` — the CLI MUST NOT add ZBD-specific assumptions to the fetch flow.
+The `fetch` subcommand MUST work with any bLIP-26-compliant L402 server, not just ZBD-hosted endpoints. Compatibility is inherited from `@axobot/fetch` — the CLI MUST NOT add ZBD-specific assumptions to the fetch flow.
 
 LNURL-pay destination resolution for `send` is delegated to the ZBD API (`POST /v0/ln-address/pay`). The CLI MUST NOT resolve LNURL endpoints directly.
 

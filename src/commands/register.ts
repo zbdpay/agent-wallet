@@ -7,7 +7,7 @@ import {
   type PaidChallenge,
   type PaymentSettlement,
   type TokenCache,
-} from "@zbdpay/agent-fetch";
+} from "@axobot/fetch";
 import { loadWalletConfig, saveWalletConfig } from "../config/load-config.js";
 import { CliError, writeJson } from "../output/json.js";
 import {
