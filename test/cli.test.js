@@ -245,7 +245,7 @@ test("init registers identity and persists config from --key", async () => {
 
         response.statusCode = 200;
         response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify({ lightningAddress: "agent-xyz@zbd.ai" }));
+        response.end(JSON.stringify({ lightningAddress: "agent-xyz@axo.bot" }));
         return;
       }
 
@@ -255,8 +255,8 @@ test("init registers identity and persists config from --key", async () => {
 
     try {
       const result = await runCli(["init", "--key", "flag-key-123"], {
-        ZBD_WALLET_CONFIG: configPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_WALLET_CONFIG: configPath,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -264,13 +264,13 @@ test("init registers identity and persists config from --key", async () => {
 
       const body = JSON.parse(result.stdout);
       assert.deepEqual(body, {
-        lightningAddress: "agent-xyz@zbd.ai",
+        lightningAddress: "agent-xyz@axo.bot",
         status: "ok",
       });
 
       const persisted = JSON.parse(await readFile(configPath, "utf8"));
       assert.equal(persisted.apiKey, "flag-key-123");
-      assert.equal(persisted.lightningAddress, "agent-xyz@zbd.ai");
+      assert.equal(persisted.lightningAddress, "agent-xyz@axo.bot");
     } finally {
       await server.close();
     }
@@ -281,7 +281,7 @@ test("info masks API key and prefers env key over config", async () => {
   await withTempConfigPath(async ({ configPath }) => {
     await writeFile(
       configPath,
-      `${JSON.stringify({ apiKey: "config-key-789", lightningAddress: "agent-xyz@zbd.ai" })}\n`,
+      `${JSON.stringify({ apiKey: "config-key-789", lightningAddress: "agent-xyz@axo.bot" })}\n`,
       "utf8",
     );
 
@@ -305,7 +305,7 @@ test("info masks API key and prefers env key over config", async () => {
 
     try {
       const result = await runCli(["info"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_API_BASE_URL: server.baseUrl,
         ZBD_API_KEY: "env-key-456",
       });
@@ -315,7 +315,7 @@ test("info masks API key and prefers env key over config", async () => {
 
       const body = JSON.parse(result.stdout);
       assert.deepEqual(body, {
-        lightningAddress: "agent-xyz@zbd.ai",
+        lightningAddress: "agent-xyz@axo.bot",
         apiKey: "***",
         balance_sats: 50001,
       });
@@ -451,7 +451,7 @@ test("session create, status, top-up, and close manage local MPP session state",
 
     try {
       const createResult = await runCli(["session", "create", `${server.baseUrl}/protected`], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_WALLET_PAYLINKS: paylinksPath,
         ZBD_WALLET_SESSIONS: sessionsPath,
@@ -468,7 +468,7 @@ test("session create, status, top-up, and close manage local MPP session state",
       assert.equal(storedAfterCreate.sessions.length, 1);
 
       const statusResult = await runCli(["session", "status", created.session_id], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_WALLET_PAYLINKS: paylinksPath,
         ZBD_WALLET_SESSIONS: sessionsPath,
@@ -480,7 +480,7 @@ test("session create, status, top-up, and close manage local MPP session state",
       assert.equal(statusBody.status, "open");
 
       const topUpResult = await runCli(["session", "top-up", created.session_id], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_WALLET_PAYLINKS: paylinksPath,
         ZBD_WALLET_SESSIONS: sessionsPath,
@@ -492,7 +492,7 @@ test("session create, status, top-up, and close manage local MPP session state",
       assert.equal(toppedUp.status, "open");
 
       const closeResult = await runCli(["session", "close", created.session_id], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_WALLET_PAYLINKS: paylinksPath,
         ZBD_WALLET_SESSIONS: sessionsPath,
@@ -536,7 +536,7 @@ test("balance converts msat to sats in output", async () => {
 
     try {
       const result = await runCli(["balance"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
 
@@ -567,8 +567,8 @@ test("init invalid key exits 1 with JSON error", async () => {
 
     try {
       const result = await runCli(["init", "--key", "bad-key-value"], {
-        ZBD_WALLET_CONFIG: configPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_WALLET_CONFIG: configPath,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -620,7 +620,7 @@ test("receive <amount_sats> returns contract JSON and appends local history", as
 
     try {
       const result = await runCli(["receive", "250"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -679,7 +679,7 @@ test("receive accepts optional description argument", async () => {
 
     try {
       const result = await runCli(["receive", "50", "test"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -728,7 +728,7 @@ test("receive --static returns contract JSON", async () => {
 
     try {
       const result = await runCli(["receive", "--static"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -781,7 +781,7 @@ test("receive --static accepts amount and description", async () => {
 
     try {
       const result = await runCli(["receive", "50", "test", "--static"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -830,28 +830,28 @@ test("send auto-detects destination format and routes to expected endpoints", as
 
     try {
       const bolt = await runCli(["send", "lnbc1exampleinvoice", "10"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       const lnAddress = await runCli(["send", "agent@example.com", "11"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       const gamertag = await runCli(["send", "@agent", "12"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       const lnurl = await runCli(["send", "lnurl1dp68gurn8ghj7", "13"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(bolt.status, 0);
@@ -896,7 +896,7 @@ test("send rejects unsupported destination with deterministic error", async () =
     await writeFile(configPath, `${JSON.stringify({ apiKey: "config-key-123" })}\n`, "utf8");
 
     const result = await runCli(["send", "invalid-destination", "10"], {
-      ZBD_WALLET_CONFIG: configPath,
+      AXO_WALLET_CONFIG: configPath,
       ZBD_WALLET_PAYMENTS: paymentsPath,
     });
 
@@ -925,7 +925,7 @@ test("payments returns local history file records", async () => {
     );
 
     const result = await runCli(["payments"], {
-      ZBD_WALLET_CONFIG: configPath,
+      AXO_WALLET_CONFIG: configPath,
       ZBD_WALLET_PAYMENTS: paymentsPath,
     });
 
@@ -1003,7 +1003,7 @@ test("legacy payments remain valid when paylink metadata is absent or additive",
     );
 
     const result = await runCli(["payments"], {
-      ZBD_WALLET_CONFIG: configPath,
+      AXO_WALLET_CONFIG: configPath,
       ZBD_WALLET_PAYMENTS: paymentsPath,
     });
 
@@ -1038,7 +1038,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
         response.end(
           JSON.stringify({
             id: "pl_001",
-            url: "https://zbd.ai/paylinks/pl_001",
+            url: "https://axo.bot/paylinks/pl_001",
             status: "active",
             lifecycle: "active",
             amount_sats: 250,
@@ -1056,7 +1056,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
           JSON.stringify({
             data: {
               id: "pl_001",
-              url: "https://zbd.ai/paylinks/pl_001",
+              url: "https://axo.bot/paylinks/pl_001",
               status: "active",
               lifecycle: "active",
               amount_sats: 250,
@@ -1076,7 +1076,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
             paylinks: [
               {
                 id: "pl_001",
-                url: "https://zbd.ai/paylinks/pl_001",
+                url: "https://axo.bot/paylinks/pl_001",
                 status: "active",
                 lifecycle: "active",
                 amount_sats: 250,
@@ -1085,7 +1085,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
               },
               {
                 id: "pl_002",
-                url: "https://zbd.ai/paylinks/pl_002",
+                url: "https://axo.bot/paylinks/pl_002",
                 status: "dead",
                 lifecycle: "dead",
                 amount_sats: 500,
@@ -1105,7 +1105,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
           JSON.stringify({
             paylink: {
               id: "pl_001",
-              url: "https://zbd.ai/paylinks/pl_001",
+              url: "https://axo.bot/paylinks/pl_001",
               status: "dead",
               lifecycle: "dead",
               amount_sats: 250,
@@ -1122,28 +1122,28 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
 
     try {
       const created = await runCli(["paylink", "create", "250"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(created.status, 0);
       assert.deepEqual(JSON.parse(created.stdout), {
         id: "pl_001",
-        url: "https://zbd.ai/paylinks/pl_001",
+        url: "https://axo.bot/paylinks/pl_001",
         status: "active",
         lifecycle: "active",
         amount_sats: 250,
       });
 
       const fetched = await runCli(["paylink", "get", "pl_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(fetched.status, 0);
       assert.deepEqual(JSON.parse(fetched.stdout), {
         id: "pl_001",
-        url: "https://zbd.ai/paylinks/pl_001",
+        url: "https://axo.bot/paylinks/pl_001",
         status: "active",
         lifecycle: "active",
         amount_sats: 250,
@@ -1152,16 +1152,16 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
       });
 
       const listed = await runCli(["paylink", "list"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(listed.status, 0);
       assert.deepEqual(JSON.parse(listed.stdout), {
         paylinks: [
           {
             id: "pl_001",
-            url: "https://zbd.ai/paylinks/pl_001",
+            url: "https://axo.bot/paylinks/pl_001",
             status: "active",
             lifecycle: "active",
             amount_sats: 250,
@@ -1170,7 +1170,7 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
           },
           {
             id: "pl_002",
-            url: "https://zbd.ai/paylinks/pl_002",
+            url: "https://axo.bot/paylinks/pl_002",
             status: "dead",
             lifecycle: "dead",
             amount_sats: 500,
@@ -1181,14 +1181,14 @@ test("paylink command create/get/list/cancel return deterministic JSON", async (
       });
 
       const cancelled = await runCli(["paylink", "cancel", "pl_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(cancelled.status, 0);
       assert.deepEqual(JSON.parse(cancelled.stdout), {
         id: "pl_001",
-        url: "https://zbd.ai/paylinks/pl_001",
+        url: "https://axo.bot/paylinks/pl_001",
         status: "dead",
         lifecycle: "dead",
       });
@@ -1217,7 +1217,7 @@ test("paylink create forwards range/multi-use/metadata params", async () => {
         response.end(
           JSON.stringify({
             id: "pl_range_001",
-            url: "https://zbd.ai/paylinks/pl_range_001",
+            url: "https://axo.bot/paylinks/pl_range_001",
             status: "created",
             lifecycle: "created",
             amount_mode: "range",
@@ -1258,16 +1258,16 @@ test("paylink create forwards range/multi-use/metadata params", async () => {
           "spring",
         ],
         {
-          ZBD_WALLET_CONFIG: configPath,
+          AXO_WALLET_CONFIG: configPath,
           ZBD_WALLET_PAYMENTS: paymentsPath,
-          ZBD_AI_BASE_URL: server.baseUrl,
+          AXO_BASE_URL: server.baseUrl,
         },
       );
 
       assert.equal(created.status, 0);
       assert.deepEqual(JSON.parse(created.stdout), {
         id: "pl_range_001",
-        url: "https://zbd.ai/paylinks/pl_range_001",
+        url: "https://axo.bot/paylinks/pl_range_001",
         status: "created",
         lifecycle: "created",
         amount_sats: 5,
@@ -1311,9 +1311,9 @@ test("paylink error maps API envelope to CliError deterministically", async () =
 
     try {
       const result = await runCli(["paylink", "create", "250"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -1341,7 +1341,7 @@ test("paylink settlement maps pending and failed statuses deterministically", as
           JSON.stringify({
             paylink: {
               id: "pl_pending",
-              url: "https://zbd.ai/paylinks/pl_pending",
+              url: "https://axo.bot/paylinks/pl_pending",
               status: "active",
               lifecycle: "active",
               amount_sats: 120,
@@ -1361,7 +1361,7 @@ test("paylink settlement maps pending and failed statuses deterministically", as
           JSON.stringify({
             paylink: {
               id: "pl_failed",
-              url: "https://zbd.ai/paylinks/pl_failed",
+              url: "https://axo.bot/paylinks/pl_failed",
               status: "active",
               lifecycle: "active",
               amount_sats: 121,
@@ -1410,17 +1410,17 @@ test("paylink settlement maps pending and failed statuses deterministically", as
 
     try {
       const pendingResult = await runCli(["paylink", "get", "pl_pending"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_API_BASE_URL: server.baseUrl,
       });
       assert.equal(pendingResult.status, 0);
 
       const failedResult = await runCli(["paylink", "get", "pl_failed"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_API_BASE_URL: server.baseUrl,
       });
       assert.equal(failedResult.status, 0);
@@ -1472,7 +1472,7 @@ test("paylink settlement paid projection is idempotent settlement append", async
           JSON.stringify({
             paylink: {
               id: "pl_paid",
-              url: "https://zbd.ai/paylinks/pl_paid",
+              url: "https://axo.bot/paylinks/pl_paid",
               status: "active",
               lifecycle: "active",
               amount_sats: 333,
@@ -1508,17 +1508,17 @@ test("paylink settlement paid projection is idempotent settlement append", async
 
     try {
       const first = await runCli(["paylink", "get", "pl_paid"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_API_BASE_URL: server.baseUrl,
       });
       assert.equal(first.status, 0);
 
       const second = await runCli(["paylink", "get", "pl_paid"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_API_BASE_URL: server.baseUrl,
       });
       assert.equal(second.status, 0);
@@ -1597,7 +1597,7 @@ test("payment lookup is local-first then API fallback with cache append", async 
 
     try {
       const localResult = await runCli(["payment", "local_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -1607,7 +1607,7 @@ test("payment lookup is local-first then API fallback with cache append", async 
       assert.equal(chargeCalls, 0);
 
       const remoteResult = await runCli(["payment", "remote_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -1671,10 +1671,10 @@ test("withdraw create and status return contract-shaped JSON", async () => {
 
     try {
       const createResult = await runCli(["withdraw", "create", "300"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(createResult.status, 0);
@@ -1684,7 +1684,7 @@ test("withdraw create and status return contract-shaped JSON", async () => {
       });
 
       const statusResult = await runCli(["withdraw", "status", "wr_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -1731,10 +1731,10 @@ test("withdraw shorthand amount maps to create", async () => {
 
     try {
       const result = await runCli(["withdraw", "300"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -1772,7 +1772,7 @@ test("withdraw shorthand id maps to status", async () => {
 
     try {
       const result = await runCli(["withdraw", "wr_short_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -1822,10 +1822,10 @@ test("withdraw create parses nested invoice uri and strips lightning prefix", as
 
     try {
       const result = await runCli(["withdraw", "create", "50000"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -1914,10 +1914,10 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
     try {
       const first = await runCli(["fetch", `${server.baseUrl}${protectedUrlPath}`], {
         HOME: tempHome,
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(first.status, 0);
@@ -1935,10 +1935,10 @@ test("fetch reuses default token cache and avoids duplicate pay", async () => {
 
       const second = await runCli(["fetch", `${server.baseUrl}${protectedUrlPath}`], {
         HOME: tempHome,
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(second.status, 0);
@@ -1993,7 +1993,7 @@ test("fetch exits 1 when --max-sats is below challenge amount", async () => {
 
     try {
       const result = await runCli(["fetch", `${server.baseUrl}/cap-resource`, "--max-sats", "10"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
       });
@@ -2074,9 +2074,9 @@ test("fetch pays x402 challenges through shield and forwards X-PAYMENT", async (
 
     try {
       const result = await runCli(["fetch", `${server.baseUrl}/x402-resource`, "--max-sats", "21"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -2137,9 +2137,9 @@ test("fetch rejects x402 challenges above --max-sats before paying shield", asyn
 
     try {
       const result = await runCli(["fetch", `${server.baseUrl}/x402-cap-resource`, "--max-sats", "50"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -2194,10 +2194,10 @@ test("fetch surfaces self-pay guard from payment API", async () => {
 
     try {
       const result = await runCli(["fetch", `${server.baseUrl}/self-pay`, "--max-sats", "21"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -2312,8 +2312,8 @@ test("onchain payout client methods parse deterministic nested data envelopes", 
     response.end(JSON.stringify({ error: "not_found" }));
   });
 
-  const previousBaseUrl = process.env.ZBD_AI_BASE_URL;
-  process.env.ZBD_AI_BASE_URL = server.baseUrl;
+  const previousBaseUrl = process.env.AXO_BASE_URL;
+  process.env.AXO_BASE_URL = server.baseUrl;
   try {
     const quote = await quoteOnchainPayout("config-key-123", {
       amount_sats: 210,
@@ -2374,9 +2374,9 @@ test("onchain payout client methods parse deterministic nested data envelopes", 
     });
   } finally {
     if (previousBaseUrl === undefined) {
-      delete process.env.ZBD_AI_BASE_URL;
+      delete process.env.AXO_BASE_URL;
     } else {
-      process.env.ZBD_AI_BASE_URL = previousBaseUrl;
+      process.env.AXO_BASE_URL = previousBaseUrl;
     }
     await server.close();
   }
@@ -2400,8 +2400,8 @@ test("onchain payout client maps API validation failures to deterministic CliErr
     response.end(JSON.stringify({ error: "not_found" }));
   });
 
-  const previousBaseUrl = process.env.ZBD_AI_BASE_URL;
-  process.env.ZBD_AI_BASE_URL = server.baseUrl;
+  const previousBaseUrl = process.env.AXO_BASE_URL;
+  process.env.AXO_BASE_URL = server.baseUrl;
   try {
     await assert.rejects(
       () =>
@@ -2430,9 +2430,9 @@ test("onchain payout client maps API validation failures to deterministic CliErr
     );
   } finally {
     if (previousBaseUrl === undefined) {
-      delete process.env.ZBD_AI_BASE_URL;
+      delete process.env.AXO_BASE_URL;
     } else {
-      process.env.ZBD_AI_BASE_URL = previousBaseUrl;
+      process.env.AXO_BASE_URL = previousBaseUrl;
     }
     await server.close();
   }
@@ -2542,9 +2542,9 @@ test("onchain quote/send/status/retry-claim commands return deterministic JSON a
 
     try {
       const quoted = await runCli(["onchain", "quote", "210", "bc1qquotedestination"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(quoted.status, 0);
       assert.deepEqual(JSON.parse(quoted.stdout), {
@@ -2559,9 +2559,9 @@ test("onchain quote/send/status/retry-claim commands return deterministic JSON a
       const sent = await runCli(
         ["onchain", "send", "210", "bc1qquotedestination", "--payout-id", "payout_cli_001", "--accept-terms"],
         {
-          ZBD_WALLET_CONFIG: configPath,
+          AXO_WALLET_CONFIG: configPath,
           ZBD_WALLET_PAYMENTS: paymentsPath,
-          ZBD_AI_BASE_URL: server.baseUrl,
+          AXO_BASE_URL: server.baseUrl,
         },
       );
       assert.equal(sent.status, 0);
@@ -2591,9 +2591,9 @@ test("onchain quote/send/status/retry-claim commands return deterministic JSON a
       assert.equal(typeof paymentHistory[0].timestamp, "string");
 
       const status = await runCli(["onchain", "status", "payout_cli_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(status.status, 0);
       assert.deepEqual(JSON.parse(status.stdout), {
@@ -2611,9 +2611,9 @@ test("onchain quote/send/status/retry-claim commands return deterministic JSON a
       });
 
       const retried = await runCli(["onchain", "retry-claim", "payout_cli_001"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
       assert.equal(retried.status, 0);
       assert.deepEqual(JSON.parse(retried.stdout), {
@@ -2687,9 +2687,9 @@ test("onchain status preserves terminal payout statuses deterministically", asyn
     try {
       for (const terminalCase of terminalCases) {
         const result = await runCli(["onchain", "status", terminalCase.payoutId], {
-          ZBD_WALLET_CONFIG: configPath,
+          AXO_WALLET_CONFIG: configPath,
           ZBD_WALLET_PAYMENTS: paymentsPath,
-          ZBD_AI_BASE_URL: server.baseUrl,
+          AXO_BASE_URL: server.baseUrl,
         });
 
         assert.equal(result.status, 0);
@@ -2732,9 +2732,9 @@ test("onchain retry-claim maps terminal API failure to deterministic CLI error",
 
     try {
       const result = await runCli(["onchain", "retry-claim", "payout_terminal"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -2765,9 +2765,9 @@ test("onchain send requires --accept-terms and does not call outbound API withou
 
     try {
       const result = await runCli(["onchain", "send", "210", "bc1qquotedestination"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -2821,10 +2821,10 @@ test("send bypasses shield when ZBD_SHIELD_ENABLED=false", async () => {
 
     try {
       const result = await runCli(["send", "@toggle-user", "41"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_SHIELD_ENABLED: "false",
       });
 
@@ -2880,10 +2880,10 @@ test("withdraw bypasses shield when ZBD_SHIELD_ENABLED=false", async () => {
 
     try {
       const result = await runCli(["withdraw", "create", "17"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
         ZBD_SHIELD_ENABLED: "false",
       });
 
@@ -2935,9 +2935,9 @@ test("send retries shield transport once and reuses idempotency key", async () =
 
     try {
       const result = await runCli(["send", "lnbc1retrysamekey", "23"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 0);
@@ -2985,10 +2985,10 @@ test("send degrades to direct ZBD API when shield is unreachable", async () => {
 
     try {
       const result = await runCli(["send", "@fallback-user", "55"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+        AXO_BASE_URL: "http://127.0.0.1:9",
       });
 
       assert.equal(result.status, 0);
@@ -3039,10 +3039,10 @@ test("withdraw degrades to direct ZBD API when shield is unreachable", async () 
 
     try {
       const result = await runCli(["withdraw", "create", "33"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
         ZBD_API_BASE_URL: server.baseUrl,
-        ZBD_AI_BASE_URL: "http://127.0.0.1:9",
+        AXO_BASE_URL: "http://127.0.0.1:9",
       });
 
       assert.equal(result.status, 0);
@@ -3081,9 +3081,9 @@ test("send maps shield allowance_exceeded envelope to deterministic CLI error", 
 
     try {
       const result = await runCli(["send", "lnbc1allowanceblock", "21"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
@@ -3123,9 +3123,9 @@ test("send maps shield pending approval envelope to deterministic CLI error", as
 
     try {
       const result = await runCli(["send", "lnbc1pendingapproval", "13"], {
-        ZBD_WALLET_CONFIG: configPath,
+        AXO_WALLET_CONFIG: configPath,
         ZBD_WALLET_PAYMENTS: paymentsPath,
-        ZBD_AI_BASE_URL: server.baseUrl,
+        AXO_BASE_URL: server.baseUrl,
       });
 
       assert.equal(result.status, 1);
