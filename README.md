@@ -38,10 +38,10 @@ alias axo='node axobot-cli/dist/cli.js'
 
 - `ZBD_API_KEY`: API key used by wallet calls and payments
 - `ZBD_API_BASE_URL`: ZBD API base URL, default `https://api.zbdpay.com`
-- `ZBD_AI_BASE_URL`: registration service base URL, default `https://zbd.ai`
-- `ZBD_WALLET_CONFIG`: config path, default `~/.zbd-wallet/config.json`
-- `ZBD_WALLET_PAYMENTS`: payment history path, default `~/.zbd-wallet/payments.json`
-- `ZBD_WALLET_TOKEN_CACHE`: token cache path, default `~/.zbd-wallet/token-cache.json`
+- `AXO_BASE_URL`: registration service base URL, default `https://axo.bot`
+- `AXO_WALLET_CONFIG`: config path, default `~/.axo-wallet/config.json`
+- `ZBD_WALLET_PAYMENTS`: payment history path, default `~/.axo-wallet/payments.json`
+- `ZBD_WALLET_TOKEN_CACHE`: token cache path, default `~/.axo-wallet/token-cache.json`
 
 ## Commands
 
@@ -87,7 +87,7 @@ Paylinks are hosted payment pages at `zbd.ai/paylinks/<id>`. Share the `url` wit
 ```bash
 # Create a paylink for 250 sats
 axo paylink create 250
-# {"id":"pl_001","url":"https://zbd.ai/paylinks/pl_001","status":"active","lifecycle":"active","amount_sats":250}
+# {"id":"pl_001","url":"https://axo.bot/paylinks/pl_001","status":"active","lifecycle":"active","amount_sats":250}
 
 # Fetch current state (also syncs settlement to local payments.json)
 axo paylink get pl_001
@@ -106,7 +106,7 @@ axo paylink cancel pl_001
 
 Terminal states (`paid`, `expired`, `dead`) are permanent. A paid link cannot be reused; an expired or cancelled link cannot be reactivated.
 
-`paylink get` also polls the latest payment attempt and appends a settlement record to `~/.zbd-wallet/payments.json` with `paylink_id`, `paylink_lifecycle`, and `paylink_amount_sats` metadata.
+`paylink get` also polls the latest payment attempt and appends a settlement record to `~/.axo-wallet/payments.json` with `paylink_id`, `paylink_lifecycle`, and `paylink_amount_sats` metadata.
 ## Onchain Payout Commands
 
 Onchain payouts send bitcoin to a native BTC address via the Axo payout service.
@@ -133,7 +133,7 @@ axo onchain retry-claim payout_123
 
 **Payout status values:** `created` -> `queued` -> `broadcasting` -> `succeeded` (terminal) or `failed_invoice_expired` | `failed_lockup` | `refunded` | `manual_review` (terminal)
 
-Successful `onchain send` appends a record to `~/.zbd-wallet/payments.json` with `source: "onchain"`, `onchain_network`, `onchain_address`, and `onchain_payout_id` metadata.
+Successful `onchain send` appends a record to `~/.axo-wallet/payments.json` with `source: "onchain"`, `onchain_network`, `onchain_address`, and `onchain_payout_id` metadata.
 
 ## JSON Output Contract
 
@@ -151,10 +151,10 @@ Failure shape:
 
 Examples:
 
-- `init`: `{ "lightningAddress": "name@zbd.ai", "status": "ok" }`
+- `init`: `{ "lightningAddress": "name@axo.bot", "status": "ok" }`
 - `info`: `{ "lightningAddress": "...", "apiKey": "***", "balance_sats": 123 }`
 - `fetch`: `{ "status": 200, "body": {...}, "payment_id": "...|null", "amount_paid_sats": 21|null }`
-- `paylink create`: `{ "id": "pl_001", "url": "https://zbd.ai/paylinks/pl_001", "status": "active", "lifecycle": "active", "amount_sats": 250 }`
+- `paylink create`: `{ "id": "pl_001", "url": "https://axo.bot/paylinks/pl_001", "status": "active", "lifecycle": "active", "amount_sats": 250 }`
 - `paylink get`: adds `created_at` and `updated_at` to the above
 - `paylink list`: `{ "paylinks": [...] }` where each item matches `paylink get` shape
 - `paylink cancel`: `{ "id": "...", "url": "...", "status": "dead", "lifecycle": "dead" }`
@@ -164,13 +164,13 @@ Examples:
 - `onchain retry-claim`: `{ "payout_id": "...", "status": "queued", "kickoff": {...} }`
 ## Storage Files
 
-- Config: `~/.zbd-wallet/config.json`
+- Config: `~/.axo-wallet/config.json`
   - `apiKey`
   - `lightningAddress`
-- Payment history: `~/.zbd-wallet/payments.json`
+- Payment history: `~/.axo-wallet/payments.json`
   - paylink settlement records include `paylink_id`, `paylink_lifecycle`, `paylink_amount_sats`
   - onchain payout records include `source: "onchain"`, `onchain_network`, `onchain_address`, `onchain_payout_id`
-- Token cache: `~/.zbd-wallet/token-cache.json`
+- Token cache: `~/.axo-wallet/token-cache.json`
 ## L402 Fetch Flow
 
 `axo fetch` is powered by `@axobot/fetch`.
@@ -229,14 +229,14 @@ npm run release:dry-run
 - `zsh: command not found: axo`
   - build first and add alias, or install package globally
 - `register_failed` during `init`
-  - ensure `ZBD_AI_BASE_URL` points to your running `axobot` instance
+  - ensure `AXO_BASE_URL` points to your running `axobot` instance
   - confirm upstream `ZBD_API_BASE_URL` and API key are valid for static charge creation
 - `wallet_response_invalid` during `info`/`balance`
   - verify wallet endpoint returns a valid balance shape and that `ZBD_API_BASE_URL` is correct
 - `accept_terms_required` during `onchain send`
   - add `--accept-terms` flag to confirm consent; the flag is required and there is no interactive prompt
 - `onchain_payout_request_failed` during `onchain send/status/retry-claim`
-  - verify `ZBD_AI_BASE_URL` points to your running `axobot` instance
+  - verify `AXO_BASE_URL` points to your running `axobot` instance
   - inspect `details.status` and `details.response` for upstream error context
 - `failed_invoice_expired` payout status
   - the payout's internal invoice expired before the claim completed; run `axo onchain retry-claim <payout_id>` to re-enqueue

@@ -18,17 +18,17 @@ apikey: <api-key-from-config-or-env>
 The API key is sourced in priority order:
 
 1. `ZBD_API_KEY` environment variable
-2. `apiKey` field in `~/.zbd-wallet/config.json` (or path from `ZBD_WALLET_CONFIG`)
+2. `apiKey` field in `~/.axo-wallet/config.json` (or path from `AXO_WALLET_CONFIG`)
 
 The CLI MUST NOT print the raw API key value in any output. The `info` command MUST mask it as `***`.
 
 ```json
-{ "lightningAddress": "agent-xyz@zbd.ai", "apiKey": "***", "balance_sats": 50000 }
+{ "lightningAddress": "agent-xyz@axo.bot", "apiKey": "***", "balance_sats": 50000 }
 ```
 
-### 1.2 zbd.ai Registration Call
+### 1.2 axo.bot Registration Call
 
-The `init` command calls `POST https://zbd.ai/api/register` with the API key in the request body. This is the only endpoint that receives the raw key outside of `api.zbdpay.com`. The CLI MUST NOT persist the raw key anywhere other than the local config file.
+The `init` command calls `POST https://axo.bot/api/register` with the API key in the request body. This is the only endpoint that receives the raw key outside of `api.zbdpay.com`. The CLI MUST NOT persist the raw key anywhere other than the local config file.
 
 ### 1.3 L402 Authorization (delegated)
 
@@ -68,7 +68,7 @@ const balanceSats = Math.floor(balanceMsat / 1000)
 
 ### 2.4 Payment History File
 
-The local payments log at `~/.zbd-wallet/payments.json` stores amounts in satoshis. msat values MUST be converted before writing to this file. The file schema is:
+The local payments log at `~/.axo-wallet/payments.json` stores amounts in satoshis. msat values MUST be converted before writing to this file. The file schema is:
 
 ```json
 [{ "id": "pay_xyz", "type": "send", "amount_sats": 500, "status": "completed", "timestamp": "..." }]
@@ -147,7 +147,7 @@ Any destination format not in this table MUST cause the command to exit 1 with a
 
 ### 4.4 Local-First Payment Lookup
 
-The `payment <id>` command MUST check `~/.zbd-wallet/payments.json` first. If the record is found locally, it MUST be returned immediately without an API call. If not found locally, the CLI fetches from `GET /v0/charges/:id` and appends the result to the local file before returning.
+The `payment <id>` command MUST check `~/.axo-wallet/payments.json` first. If the record is found locally, it MUST be returned immediately without an API call. If not found locally, the CLI fetches from `GET /v0/charges/:id` and appends the result to the local file before returning.
 
 ### 4.5 ZBD API Version
 
@@ -180,7 +180,7 @@ The `onchain` subcommand group exposes four commands:
 | `axo onchain status <payout_id>` | Fetch current payout status |
 | `axo onchain retry-claim <payout_id>` | Re-enqueue claim workflow for a failed payout |
 
-All four commands call `ZBD_AI_BASE_URL` (default `https://zbd.ai`) payout routes. No direct Boltz or onchain calls are made from the CLI.
+All four commands call `ZBD_AI_BASE_URL` (default `https://axo.bot`) payout routes. No direct Boltz or onchain calls are made from the CLI.
 
 ### 5.2 Consent Requirement
 
@@ -228,7 +228,7 @@ Required fields: `quote_id`, `amount_sats`, `fee_sats`, `total_sats`, `destinati
 
 Required fields: `payout_id`, `status`, `amount_sats`, `destination`. `request_id` and `kickoff` fields are always present but may be `null`.
 
-A successful `onchain send` MUST append a record to `~/.zbd-wallet/payments.json` with these additional fields:
+A successful `onchain send` MUST append a record to `~/.axo-wallet/payments.json` with these additional fields:
 
 ```json
 {
