@@ -8,7 +8,7 @@ export interface WalletConfig {
 }
 
 export function getWalletConfigPath(): string {
-  return process.env.ZBD_WALLET_CONFIG ?? join(homedir(), ".zbd-wallet", "config.json");
+  return process.env.AXO_WALLET_CONFIG ?? join(homedir(), ".axo-wallet", "config.json");
 }
 
 export async function loadWalletConfig(): Promise<WalletConfig | null> {
