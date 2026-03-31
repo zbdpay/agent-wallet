@@ -958,12 +958,16 @@ async function createPayX402Hook(apiKey: string): Promise<X402PayHook> {
   }
 
   return async (challenge: X402Challenge): Promise<X402PaidChallenge> => {
-    const zbdAiBaseUrl = process.env.ZBD_AI_BASE_URL;
-    if (!zbdAiBaseUrl) {
-      throw new Error("Missing ZBD_AI_BASE_URL for x402 shield payment");
+    const axoBaseUrl = process.env.AXO_BASE_URL;
+    if (!axoBaseUrl) {
+      throw new Error("Missing AXO_BASE_URL for x402 shield payment");
+    }
+    if (!axoBaseUrl) {
+      throw new Error("Missing AXO_BASE_URL for x402 shield payment");
     }
 
-    const response = await fetch(`${zbdAiBaseUrl}/api/shield/x402`, {
+    const response = await fetch(`${axoBaseUrl}/api/shield/x402`, {
+
       method: "POST",
       headers: {
         apikey: apiKey,
