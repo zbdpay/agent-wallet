@@ -2,7 +2,7 @@ import { CliError } from "../output/json.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_ZBD_API_BASE_URL = "https://api.zbdpay.com";
-const DEFAULT_ZBD_AI_BASE_URL = "https://zbd.ai";
+const DEFAULT_AXO_BASE_URL = "https://axo.bot";
 const SHIELD_AUTOMATIC_RETRY_ATTEMPTS = 2;
 
 interface WalletApiResponse {
@@ -178,7 +178,7 @@ export function resolveApiKey(options: {
 export async function registerWalletIdentity(
   apiKey: string,
 ): Promise<{ lightningAddress: string }> {
-  const registrationBaseUrl = getZbdAiBaseUrl();
+  const registrationBaseUrl = getAxoBaseUrl();
   let response: Response;
   try {
     response = await fetch(`${registrationBaseUrl}/api/register`, {
@@ -1122,7 +1122,7 @@ async function requestShield(
   shieldPath: string,
   init: { method: string; body?: string },
 ): Promise<unknown> {
-  const shieldBaseUrl = getZbdAiBaseUrl();
+  const shieldBaseUrl = getAxoBaseUrl();
   let response: Response;
   try {
     response = await fetch(`${shieldBaseUrl}${shieldPath}`, {
@@ -1231,7 +1231,7 @@ async function requestShieldWithAutomaticRetries(
 
   throw new CliError(
     "shield_unreachable",
-    `Failed to reach shield API at ${getZbdAiBaseUrl()}`,
+    `Failed to reach shield API at ${getAxoBaseUrl()}`,
     {
       path: shieldPath,
     },
@@ -1243,7 +1243,7 @@ async function requestZbdAiPaylinks(
   path: string,
   init: { method: string; body?: string },
 ): Promise<unknown> {
-  const apiBaseUrl = getZbdAiBaseUrl();
+  const apiBaseUrl = getAxoBaseUrl();
   let response: Response;
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -1303,7 +1303,7 @@ async function requestZbdAiOnchainPayouts(
   path: string,
   init: { method: string; body?: string },
 ): Promise<unknown> {
-  const apiBaseUrl = getZbdAiBaseUrl();
+  const apiBaseUrl = getAxoBaseUrl();
   let response: Response;
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -1637,8 +1637,8 @@ function getZbdApiBaseUrl(): string {
   return process.env.ZBD_API_BASE_URL ?? DEFAULT_ZBD_API_BASE_URL;
 }
 
-function getZbdAiBaseUrl(): string {
-  return process.env.ZBD_AI_BASE_URL ?? DEFAULT_ZBD_AI_BASE_URL;
+function getAxoBaseUrl(): string {
+  return process.env.AXO_BASE_URL ?? DEFAULT_AXO_BASE_URL;
 }
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
