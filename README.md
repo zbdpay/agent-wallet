@@ -82,7 +82,7 @@ axo fetch <url> [--method <method>] [--data <json>] [--max-sats <amount>]
 
 ### Paylink Commands
 
-Paylinks are hosted payment pages at `zbd.ai/paylinks/<id>`. Share the `url` with a payer; the link handles the invoice lifecycle.
+Paylinks are hosted payment pages at `axo.bot/paylinks/<id>`. Share the `url` with a payer; the link handles the invoice lifecycle.
 
 ```bash
 # Create a paylink for 250 sats
